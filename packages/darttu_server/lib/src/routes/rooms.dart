@@ -18,6 +18,14 @@ final class RoomsRoute {
     return jsonResponse(result.statusCode, result.body);
   }
 
+  Future<Response> heartbeat(Request request, Map<String, String> params) async {
+    final result = await _service.heartbeat(bearerToken(request));
+    stdout.writeln(
+      '[rooms] heartbeat ${result.statusCode == 200 ? 'success' : 'failure'}: status=${result.statusCode}',
+    );
+    return jsonResponse(result.statusCode, result.body);
+  }
+
   Future<Response> list(Request request, Map<String, String> params) async {
     final result = await _service.listRooms(bearerToken(request));
     stdout.writeln(

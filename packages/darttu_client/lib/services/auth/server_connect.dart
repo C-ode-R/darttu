@@ -31,6 +31,10 @@ final class ServerConnectService {
     return _buildUri(host: host, port: port, path: '/lobby');
   }
 
+  Uri heartbeatUri({String host = officialServerHost, int? port}) {
+    return _buildUri(host: host, port: port, path: '/heartbeat');
+  }
+
   Uri roomUri({
     required int roomId,
     String host = officialServerHost,

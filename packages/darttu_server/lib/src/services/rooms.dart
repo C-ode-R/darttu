@@ -47,6 +47,21 @@ final class RoomsService {
     );
   }
 
+  Future<RoomsResult> heartbeat(String sessionToken) async {
+    final sessionState = await _validatedSession(sessionToken);
+    if (sessionState == null) {
+      return const RoomsResult(
+        statusCode: 401,
+        body: {'error': 'invalid_session'},
+      );
+    }
+
+    await _roomsRepo.cleanupStaleUsers();
+    await _roomsRepo.touchUser(sessionState.user.id);
+
+    return const RoomsResult(statusCode: 200, body: {'ok': true});
+  }
+
   Future<RoomsResult> listRooms(String sessionToken) async {
     final sessionState = await _validatedSession(sessionToken);
     if (sessionState == null) {

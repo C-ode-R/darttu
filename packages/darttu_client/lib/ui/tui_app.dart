@@ -10,11 +10,13 @@ import 'package:darttu_client/ui/terminal/terminal_renderer.dart';
 final class TuiApp {
   static const _animationFrameKey = 'ui.frame';
   static const _animationFrameInterval = Duration(milliseconds: 100);
+  static const _heartbeatInterval = Duration(seconds: 10);
 
   final AppState state;
   final AppController controller;
   final ScreenRouter screenRouter;
   final Future<void> Function()? onBeforeQuit;
+  final Future<void> Function()? onHeartbeat;
 
   final TerminalRenderer renderer;
   final TerminalInput input;
@@ -23,15 +25,18 @@ final class TuiApp {
   bool _renderScheduled = false;
   bool _disposed = false;
   Timer? _animationTimer;
+  Timer? _heartbeatTimer;
   StreamSubscription<ProcessSignal>? _sigintSubscription;
   StreamSubscription<ProcessSignal>? _sigtermSubscription;
   bool _quitRequested = false;
+  bool _heartbeatInFlight = false;
 
   TuiApp({
     required this.state,
     required this.controller,
     required this.screenRouter,
     this.onBeforeQuit,
+    this.onHeartbeat,
     TerminalRenderer? renderer,
     TerminalInput? input,
   }) : renderer = renderer ?? TerminalRenderer(),
@@ -53,6 +58,7 @@ final class TuiApp {
       };
       controller.setValue<int>(_animationFrameKey, 0);
       _startAnimationTick();
+      _startHeartbeat();
       _installSignalHandlers();
 
       await input.init(onInput: _handleInput);
@@ -147,6 +153,8 @@ final class TuiApp {
     _disposed = true;
     _animationTimer?.cancel();
     _animationTimer = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     await _sigintSubscription?.cancel();
     _sigintSubscription = null;
     await _sigtermSubscription?.cancel();
@@ -169,6 +177,26 @@ final class TuiApp {
 
     _sigtermSubscription = ProcessSignal.sigterm.watch().listen((_) {
       unawaited(_requestQuit());
+    });
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(_heartbeatInterval, (_) async {
+      if (!_running || _disposed || _heartbeatInFlight) {
+        return;
+      }
+
+      if (onHeartbeat == null) {
+        return;
+      }
+
+      _heartbeatInFlight = true;
+      try {
+        await onHeartbeat!.call();
+      } finally {
+        _heartbeatInFlight = false;
+      }
     });
   }
 }

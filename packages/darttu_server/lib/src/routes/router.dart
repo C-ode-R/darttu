@@ -96,6 +96,7 @@ final class Router {
         http(RouteMethod.post, '/auth/signup', authRoute.signup),
         http(RouteMethod.post, '/auth/login', authRoute.login),
         http(RouteMethod.get, '/lobby', roomsRoute.lobby),
+        http(RouteMethod.post, '/heartbeat', roomsRoute.heartbeat),
         http(RouteMethod.get, '/rooms', roomsRoute.list),
         http(RouteMethod.post, '/rooms', roomsRoute.create),
       ]),

@@ -209,6 +209,28 @@ final class RoomsApiService {
     return _errorResult(response);
   }
 
+  Future<RoomsApiResult> heartbeat({
+    required Uri uri,
+    required String sessionToken,
+  }) async {
+    final response = await _httpApi.postJsonWithHeaders(
+      uri: uri,
+      payload: const {},
+      headers: {'authorization': 'Bearer $sessionToken'},
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return RoomsApiResult(
+        statusCode: response.statusCode,
+        error: null,
+        room: null,
+        roomDetail: null,
+        lobby: null,
+      );
+    }
+
+    return _errorResult(response);
+  }
+
   RoomsApiResult _errorResult(ApiResponse response) {
     return RoomsApiResult(
       statusCode: response.statusCode,
