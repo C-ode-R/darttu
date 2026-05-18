@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
@@ -13,6 +14,7 @@ final class TuiApp {
   final AppState state;
   final AppController controller;
   final ScreenRouter screenRouter;
+  final Future<void> Function()? onBeforeQuit;
 
   final TerminalRenderer renderer;
   final TerminalInput input;
@@ -21,11 +23,15 @@ final class TuiApp {
   bool _renderScheduled = false;
   bool _disposed = false;
   Timer? _animationTimer;
+  StreamSubscription<ProcessSignal>? _sigintSubscription;
+  StreamSubscription<ProcessSignal>? _sigtermSubscription;
+  bool _quitRequested = false;
 
   TuiApp({
     required this.state,
     required this.controller,
     required this.screenRouter,
+    this.onBeforeQuit,
     TerminalRenderer? renderer,
     TerminalInput? input,
   }) : renderer = renderer ?? TerminalRenderer(),
@@ -42,9 +48,12 @@ final class TuiApp {
       renderer.init();
 
       controller.onStateChanged = scheduleRender;
-      controller.onQuit = quit;
+      controller.onQuit = () {
+        unawaited(_requestQuit());
+      };
       controller.setValue<int>(_animationFrameKey, 0);
       _startAnimationTick();
+      _installSignalHandlers();
 
       await input.init(onInput: _handleInput);
 
@@ -104,6 +113,20 @@ final class TuiApp {
     _running = false;
   }
 
+  Future<void> _requestQuit() async {
+    if (_quitRequested) {
+      return;
+    }
+
+    _quitRequested = true;
+
+    try {
+      await onBeforeQuit?.call();
+    } finally {
+      quit();
+    }
+  }
+
   void _startAnimationTick() {
     _animationTimer?.cancel();
     _animationTimer = Timer.periodic(_animationFrameInterval, (_) {
@@ -124,11 +147,28 @@ final class TuiApp {
     _disposed = true;
     _animationTimer?.cancel();
     _animationTimer = null;
+    await _sigintSubscription?.cancel();
+    _sigintSubscription = null;
+    await _sigtermSubscription?.cancel();
+    _sigtermSubscription = null;
 
     controller.onStateChanged = null;
     controller.onQuit = null;
 
     await input.dispose();
     renderer.dispose();
+  }
+
+  void _installSignalHandlers() {
+    _sigintSubscription?.cancel();
+    _sigtermSubscription?.cancel();
+
+    _sigintSubscription = ProcessSignal.sigint.watch().listen((_) {
+      unawaited(_requestQuit());
+    });
+
+    _sigtermSubscription = ProcessSignal.sigterm.watch().listen((_) {
+      unawaited(_requestQuit());
+    });
   }
 }
