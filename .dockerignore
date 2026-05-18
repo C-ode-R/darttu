@@ -1,0 +1,14 @@
+.dart_tool
+.git
+build
+packages/*/.dart_tool
+packages/*/build
+packages/*/test
+packages/darttu_client/**
+!packages/darttu_client/pubspec.yaml
+packages/darttu_shared/**
+!packages/darttu_shared/pubspec.yaml
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
