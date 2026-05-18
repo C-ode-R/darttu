@@ -13,8 +13,11 @@ const _roomsApi = RoomsApiService();
 const _serverConnect = ServerConnectService();
 const _sessionStore = SessionStore();
 const _defaultMaxPlayers = 4;
+const _autoRefreshInterval = Duration(seconds: 5);
 
 final class RoomListScreen implements AppScreen {
+  Timer? _autoRefreshTimer;
+
   @override
   Widget build(AppState state) {
     final username = state.get<String>('auth.username') ?? '알 수 없는 사용자';
@@ -201,11 +204,34 @@ final class RoomListScreen implements AppScreen {
   void onEnter(AppState state, AppController controller) {
     controller.setValue<bool>('roomList.isCreating', false);
     controller.setValue<String>('roomList.createName', '');
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      if (controller.state.screenState != ScreenState.roomList) {
+        return;
+      }
+      if (controller.state.getOrDefault<bool>('roomList.isCreating', false)) {
+        return;
+      }
+      if (controller.state.getOrDefault<bool>('roomList.loading', false)) {
+        return;
+      }
+
+      unawaited(
+        _loadLobby(
+          controller.state,
+          controller,
+          successMessage: controller.state.get<String>('roomList.message'),
+        ),
+      );
+    });
     unawaited(_loadLobby(state, controller));
   }
 
   @override
-  void onExit(AppState state, AppController controller) {}
+  void onExit(AppState state, AppController controller) {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = null;
+  }
 
   Future<void> _loadLobby(
     AppState state,
