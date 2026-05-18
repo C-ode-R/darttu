@@ -18,7 +18,7 @@ RUN dart compile exe packages/darttu_server/bin/darttu_server.dart -o /app/bin/d
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 \
+    && apt-get install -y --no-install-recommends ca-certificates libsqlite3-0 libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
