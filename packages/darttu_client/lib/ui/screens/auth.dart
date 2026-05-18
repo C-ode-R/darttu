@@ -9,7 +9,7 @@ import 'package:darttu_client/services/auth/server_connect.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-const _authApi = AuthApiService();
+final _authApi = AuthApiService();
 const _sessionStore = SessionStore();
 const _serverConnect = ServerConnectService();
 const _fieldCount = 2;

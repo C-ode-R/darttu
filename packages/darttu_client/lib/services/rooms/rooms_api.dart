@@ -1,4 +1,5 @@
 import 'package:darttu_client/services/http/http_api.dart';
+import 'package:darttu_client/services/network/socket_client.dart';
 
 final class RoomSummary {
   final int id;
@@ -80,19 +81,16 @@ final class RoomsApiResult {
 }
 
 final class RoomsApiService {
-  final HttpApiService _httpApi;
+  final AppSocketClient _socket;
 
-  const RoomsApiService({HttpApiService httpApi = const HttpApiService()})
-    : _httpApi = httpApi;
+  RoomsApiService({AppSocketClient? socket})
+    : _socket = socket ?? appSocketClient;
 
   Future<RoomsApiResult> fetchLobby({
     required Uri uri,
     required String sessionToken,
   }) async {
-    final response = await _httpApi.getJsonWithHeaders(
-      uri: uri,
-      headers: {'authorization': 'Bearer $sessionToken'},
-    );
+    final response = await _socket.call(action: 'lobby');
     final roomsJson = response.body['rooms'];
     final usersJson = response.body['onlineUsers'];
     if (roomsJson is! List<Object?> || usersJson is! List<Object?>) {
@@ -123,10 +121,9 @@ final class RoomsApiService {
     required String name,
     int maxPlayers = 4,
   }) async {
-    final response = await _httpApi.postJsonWithHeaders(
-      uri: uri,
+    final response = await _socket.call(
+      action: 'createRoom',
       payload: {'name': name, 'maxPlayers': maxPlayers},
-      headers: {'authorization': 'Bearer $sessionToken'},
     );
     final roomJson = response.body['room'];
     if (roomJson is! Map<Object?, Object?>) {
@@ -146,10 +143,9 @@ final class RoomsApiService {
     required Uri uri,
     required String sessionToken,
   }) async {
-    final response = await _httpApi.postJsonWithHeaders(
-      uri: uri,
-      payload: const {},
-      headers: {'authorization': 'Bearer $sessionToken'},
+    final response = await _socket.call(
+      action: 'joinRoom',
+      payload: {'roomId': _roomIdFromUri(uri)},
     );
     final roomJson = response.body['room'];
     if (roomJson is! Map<Object?, Object?>) {
@@ -169,9 +165,9 @@ final class RoomsApiService {
     required Uri uri,
     required String sessionToken,
   }) async {
-    final response = await _httpApi.getJsonWithHeaders(
-      uri: uri,
-      headers: {'authorization': 'Bearer $sessionToken'},
+    final response = await _socket.call(
+      action: 'fetchRoom',
+      payload: {'roomId': _roomIdFromUri(uri)},
     );
     final roomJson = response.body['room'];
     if (roomJson is! Map<Object?, Object?>) {
@@ -191,32 +187,9 @@ final class RoomsApiService {
     required Uri uri,
     required String sessionToken,
   }) async {
-    final response = await _httpApi.postJsonWithHeaders(
-      uri: uri,
-      payload: const {},
-      headers: {'authorization': 'Bearer $sessionToken'},
-    );
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return RoomsApiResult(
-        statusCode: response.statusCode,
-        error: null,
-        room: null,
-        roomDetail: null,
-        lobby: null,
-      );
-    }
-
-    return _errorResult(response);
-  }
-
-  Future<RoomsApiResult> heartbeat({
-    required Uri uri,
-    required String sessionToken,
-  }) async {
-    final response = await _httpApi.postJsonWithHeaders(
-      uri: uri,
-      payload: const {},
-      headers: {'authorization': 'Bearer $sessionToken'},
+    final response = await _socket.call(
+      action: 'leaveRoom',
+      payload: {'roomId': _roomIdFromUri(uri)},
     );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return RoomsApiResult(
@@ -239,6 +212,15 @@ final class RoomsApiService {
       roomDetail: null,
       lobby: null,
     );
+  }
+
+  int _roomIdFromUri(Uri uri) {
+    final segments = uri.pathSegments;
+    if (segments.length < 2) {
+      return -1;
+    }
+
+    return int.tryParse(segments[1]) ?? -1;
   }
 
   RoomSummary _parseRoom(Map<Object?, Object?> json) {

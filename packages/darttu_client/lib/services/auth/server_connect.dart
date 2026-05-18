@@ -3,6 +3,10 @@ const officialServerHost = 'darttu-server-0.coder.ac';
 final class ServerConnectService {
   const ServerConnectService();
 
+  Uri socketUri({String host = officialServerHost, int? port}) {
+    return Uri(scheme: 'wss', host: host, port: port, path: '/ws');
+  }
+
   Uri officialBaseUri({String host = officialServerHost, int? port}) {
     return _buildUri(host: host, port: port);
   }

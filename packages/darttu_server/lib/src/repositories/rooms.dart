@@ -67,6 +67,7 @@ final class LobbySnapshot {
 
 abstract interface class RoomsRepo {
   Future<void> cleanupStaleUsers();
+  Future<void> disconnectUser(int userId);
   Future<List<RoomSummary>> listRooms();
   Future<List<OnlineUserSummary>> listOnlineUsers();
   Future<LobbySnapshot> getLobbySnapshot();
@@ -129,6 +130,34 @@ final class DriftRoomsRepo implements RoomsRepo {
           [userId],
         );
       }
+
+      for (final roomId in affectedRoomIds) {
+        await _normalizeRoom(roomId);
+      }
+    });
+  }
+
+  @override
+  Future<void> disconnectUser(int userId) async {
+    await _database.transaction(() async {
+      final roomRows = await _database.customSelect(
+        'SELECT room_id FROM room_members WHERE user_id = ?1',
+        variables: [Variable<int>(userId)],
+        readsFrom: const {},
+      ).get();
+
+      final affectedRoomIds = roomRows
+          .map((row) => row.read<int>('room_id'))
+          .toSet();
+
+      await _database.customStatement(
+        'DELETE FROM room_members WHERE user_id = ?1',
+        [userId],
+      );
+      await _database.customStatement(
+        'DELETE FROM online_users WHERE user_id = ?1',
+        [userId],
+      );
 
       for (final roomId in affectedRoomIds) {
         await _normalizeRoom(roomId);

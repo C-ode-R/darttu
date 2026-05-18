@@ -6,10 +6,11 @@ import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/auth_api.dart';
 import 'package:darttu_client/services/auth/session_store.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
+import 'package:darttu_client/services/network/socket_client.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-const _authApi = AuthApiService();
+final _authApi = AuthApiService();
 const _sessionStore = SessionStore();
 const _serverConnect = ServerConnectService();
 
@@ -112,7 +113,7 @@ final class ServerSelection implements AppScreen {
 
     const host = officialServerHost;
     final healthy = await _authApi.healthCheck(
-      _serverConnect.healthUri(host: host),
+      _serverConnect.socketUri(host: host),
     );
     if (!healthy) {
       controller.setValue<String>(
@@ -132,7 +133,7 @@ final class ServerSelection implements AppScreen {
         '기존 세션을 확인하는 중...',
       );
       final sessionResult = await _authApi.session(
-        uri: _serverConnect.sessionUri(host: host),
+        uri: _serverConnect.socketUri(host: host),
         sessionToken: sessionToken,
       );
 
@@ -153,6 +154,7 @@ final class ServerSelection implements AppScreen {
       controller.setValue<int>('auth.userId', null);
       controller.setValue<String>('auth.username', null);
       await _sessionStore.clear();
+      await appSocketClient.disconnect();
     }
 
     controller.setScreenState(ScreenState.auth);

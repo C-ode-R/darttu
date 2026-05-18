@@ -1,14 +1,20 @@
 import '../http/http_api.dart';
+import '../network/socket_client.dart';
 
 final class AuthApiService {
-  final HttpApiService _http;
+  final AppSocketClient _socket;
 
-  const AuthApiService({HttpApiService http = const HttpApiService()})
-    : _http = http;
+  AuthApiService({AppSocketClient? socket})
+    : _socket = socket ?? appSocketClient;
 
   Future<bool> healthCheck(Uri uri) async {
-    final response = await _http.getJson(uri);
-    return response.statusCode == 200 && response.body['status'] == 'ok';
+    try {
+      await _socket.connect(uri: uri);
+      final response = await _socket.call(action: 'ping');
+      return response.statusCode == 200 && response.body['ok'] == true;
+    } on Object {
+      return false;
+    }
   }
 
   Future<ApiResponse> signup({
@@ -16,8 +22,8 @@ final class AuthApiService {
     required String username,
     required String password,
   }) {
-    return _http.postJson(
-      uri: uri,
+    return _socket.call(
+      action: 'signup',
       payload: {'username': username, 'password': password},
     );
   }
@@ -27,8 +33,8 @@ final class AuthApiService {
     required String username,
     required String password,
   }) {
-    return _http.postJson(
-      uri: uri,
+    return _socket.call(
+      action: 'login',
       payload: {'username': username, 'password': password},
     );
   }
@@ -37,9 +43,9 @@ final class AuthApiService {
     required Uri uri,
     required String sessionToken,
   }) {
-    return _http.getJsonWithHeaders(
-      uri: uri,
-      headers: {'authorization': 'Bearer $sessionToken'},
+    return _socket.call(
+      action: 'session',
+      payload: {'sessionToken': sessionToken},
     );
   }
 }

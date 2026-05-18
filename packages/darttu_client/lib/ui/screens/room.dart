@@ -9,7 +9,7 @@ import 'package:darttu_client/services/rooms/rooms_api.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-const _roomsApi = RoomsApiService();
+final _roomsApi = RoomsApiService();
 const _serverConnect = ServerConnectService();
 const _sessionStore = SessionStore();
 
