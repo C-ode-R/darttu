@@ -25,17 +25,17 @@ final class ServerBootstrap {
 
     final authService = AuthService(repo: authRepo);
     final sessionValidator = AuthSessionValidator(repo: authRepo);
+
+    late final Server server;
     final membership = RoomMembershipService(
       rooms: roomRepo,
       members: memberRepo,
       presence: presenceRepo,
+      onRoomChanged: () => server.broadcastLobby(),
     );
-
-    late final Server server;
     final roomsService = RoomsService(
       rooms: roomRepo,
       membership: membership,
-      onRoomChanged: () => server.broadcastLobby(),
     );
 
     final roomMiddlewares = [

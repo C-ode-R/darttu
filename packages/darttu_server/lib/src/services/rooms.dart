@@ -11,15 +11,12 @@ final class RoomsResult {
 final class RoomsService {
   final RoomRepo _rooms;
   final RoomMembershipService _membership;
-  final Future<void> Function() _onRoomChanged;
 
   RoomsService({
     required RoomRepo rooms,
     required RoomMembershipService membership,
-    Future<void> Function()? onRoomChanged,
   }) : _rooms = rooms,
-       _membership = membership,
-       _onRoomChanged = onRoomChanged ?? (() async {});
+       _membership = membership;
 
   Future<RoomsResult> lobby() async {
     final snapshot = await _rooms.lobbySnapshot();
@@ -81,7 +78,6 @@ final class RoomsService {
       );
     }
 
-    _onRoomChanged();
     return RoomsResult(statusCode: 201, body: {'room': RoomsPresenter.toJson(room)});
   }
 
@@ -121,7 +117,6 @@ final class RoomsService {
       );
     }
 
-    _onRoomChanged();
     return RoomsResult(statusCode: 200, body: {'room': RoomsPresenter.toDetailJson(room)});
   }
 
@@ -130,7 +125,6 @@ final class RoomsService {
     required int userId,
   }) async {
     await _membership.leaveRoom(roomId: roomId, userId: userId);
-    _onRoomChanged();
     return const RoomsResult(statusCode: 200, body: {'ok': true});
   }
 }

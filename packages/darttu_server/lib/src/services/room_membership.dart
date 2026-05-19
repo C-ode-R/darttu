@@ -5,16 +5,19 @@ final class RoomMembershipService {
   final RoomMemberRepo _members;
   final PresenceRepo _presence;
   final int _presenceTimeoutSeconds;
+  final Future<void> Function() _onRoomChanged;
 
   RoomMembershipService({
     required RoomRepo rooms,
     required RoomMemberRepo members,
     required PresenceRepo presence,
     int presenceTimeoutSeconds = 60,
+    Future<void> Function()? onRoomChanged,
   }) : _rooms = rooms,
        _members = members,
        _presence = presence,
-       _presenceTimeoutSeconds = presenceTimeoutSeconds;
+       _presenceTimeoutSeconds = presenceTimeoutSeconds,
+       _onRoomChanged = onRoomChanged ?? (() async {});
 
   Future<void> cleanupStaleUsers() async {
     final staleIds = await _presence.staleUserIds(
@@ -26,13 +29,14 @@ final class RoomMembershipService {
     }
   }
 
-  Future<void> disconnectUser(int userId) {
-    return _rooms.transaction(() async {
+  Future<void> disconnectUser(int userId) async {
+    await _rooms.transaction(() async {
       final affectedRoomIds = await _presence.roomIdsForUser(userId);
       await _members.removeUserFromAllRooms(userId);
       await _presence.removeOnlineUser(userId);
       await _normalizeRooms(affectedRoomIds);
     });
+    await _onRoomChanged();
   }
 
   Future<RoomSummary?> createRoom({
@@ -61,6 +65,7 @@ final class RoomMembershipService {
         await _normalizeRoom(roomId);
       });
 
+      await _onRoomChanged();
       return _rooms.summary(roomId);
     } on Object {
       return null;
@@ -83,6 +88,7 @@ final class RoomMembershipService {
       await _normalizeRoom(roomId);
     });
 
+    await _onRoomChanged();
     return _rooms.detail(roomId);
   }
 
@@ -95,6 +101,7 @@ final class RoomMembershipService {
       await _normalizeRoom(roomId);
     });
 
+    await _onRoomChanged();
     return _rooms.detail(roomId);
   }
 
