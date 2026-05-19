@@ -5,6 +5,7 @@ import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
+import 'package:darttu_client/services/network/socket_client.dart';
 import 'package:darttu_client/services/rooms/rooms_client.dart';
 import 'package:darttu_client/services/rooms/models.dart';
 import 'package:darttu_client/ui/error_messages.dart';
@@ -12,21 +13,22 @@ import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
 const _defaultMaxPlayers = 4;
-const _autoRefreshInterval = Duration(seconds: 5);
 
 final class RoomListScreen implements AppScreen {
   final RoomsClient _roomsClient;
   final ServerConnectService _serverConnect;
   final AuthSessionCoordinator _authSessionCoordinator;
-  Timer? _autoRefreshTimer;
+  final AppSocketClient _socket;
 
   RoomListScreen({
     required RoomsClient roomsClient,
     required ServerConnectService serverConnect,
     required AuthSessionCoordinator authSessionCoordinator,
+    required AppSocketClient socket,
   }) : _roomsClient = roomsClient,
        _serverConnect = serverConnect,
-       _authSessionCoordinator = authSessionCoordinator;
+       _authSessionCoordinator = authSessionCoordinator,
+       _socket = socket;
 
   @override
   Widget build(AppState state) {
@@ -210,37 +212,57 @@ final class RoomListScreen implements AppScreen {
     }
   }
 
+  void _handleBroadcast(AppState state, AppController controller) {
+    _socket.onBroadcast = (message) {
+      final action = message['action']?.toString();
+      if (action != 'lobbyUpdate') return;
+      if (state.screenState != ScreenState.roomList) return;
+      if (state.getOrDefault<bool>('roomList.isCreating', false)) return;
+
+      final body = message['body'];
+      if (body is! Map<String, Object?>) return;
+
+      final roomsJson = body['rooms'];
+      final usersJson = body['onlineUsers'];
+      if (roomsJson is! List<Object?> || usersJson is! List<Object?>) return;
+
+      final rooms = roomsJson
+          .whereType<Map<Object?, Object?>>()
+          .map(_parseRoom)
+          .toList(growable: false);
+      final onlineUsers = usersJson
+          .whereType<Map<Object?, Object?>>()
+          .map(_parseOnlineUser)
+          .toList(growable: false);
+
+      final currentSelectedIndex = state.getOrDefault<int>(
+        'roomList.selectedIndex',
+        0,
+      );
+      final nextSelectedIndex = rooms.isEmpty
+          ? 0
+          : currentSelectedIndex.clamp(0, rooms.length - 1);
+
+      controller.setValue<List<RoomSummary>>('roomList.rooms', rooms);
+      controller.setValue<List<OnlineUserSummary>>(
+        'roomList.onlineUsers',
+        onlineUsers,
+      );
+      controller.setValue<int>('roomList.selectedIndex', nextSelectedIndex);
+    };
+  }
+
   @override
   void onEnter(AppState state, AppController controller) {
     controller.setValue<bool>('roomList.isCreating', false);
     controller.setValue<String>('roomList.createName', '');
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
-      if (controller.state.screenState != ScreenState.roomList) {
-        return;
-      }
-      if (controller.state.getOrDefault<bool>('roomList.isCreating', false)) {
-        return;
-      }
-      if (controller.state.getOrDefault<bool>('roomList.loading', false)) {
-        return;
-      }
-
-      unawaited(
-        _loadLobby(
-          controller.state,
-          controller,
-          successMessage: controller.state.get<String>('roomList.message'),
-        ),
-      );
-    });
+    _handleBroadcast(state, controller);
     unawaited(_loadLobby(state, controller));
   }
 
   @override
   void onExit(AppState state, AppController controller) {
-    _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = null;
+    _socket.onBroadcast = null;
   }
 
   Future<void> _loadLobby(
@@ -455,6 +477,24 @@ final class RoomListScreen implements AppScreen {
         sessionErrorMessages,
         commonErrorMessages,
       ],
+    );
+  }
+
+  RoomSummary _parseRoom(Map<Object?, Object?> json) {
+    return RoomSummary(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name']?.toString() ?? '이름 없는 방',
+      currentPlayers: (json['currentPlayers'] as num?)?.toInt() ?? 0,
+      maxPlayers: (json['maxPlayers'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  OnlineUserSummary _parseOnlineUser(Map<Object?, Object?> json) {
+    return OnlineUserSummary(
+      userId: (json['userId'] as num?)?.toInt() ?? 0,
+      username: json['username']?.toString() ?? '알 수 없는 사용자',
+      roomId: (json['roomId'] as num?)?.toInt(),
+      roomName: json['roomName']?.toString(),
     );
   }
 }

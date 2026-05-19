@@ -14,6 +14,8 @@ final class AppSocketClient implements SocketConnection {
   final Map<String, Completer<ApiResponse>> _pending =
       <String, Completer<ApiResponse>>{};
 
+  void Function(Map<String, Object?>)? onBroadcast;
+
   bool get isConnected => _socket != null;
 
   Future<void> connect({required Uri uri, String? sessionToken}) async {
@@ -110,6 +112,12 @@ final class AppSocketClient implements SocketConnection {
     try {
       final decoded = jsonDecode(message);
       if (decoded is! Map<String, Object?>) {
+        return;
+      }
+
+      final type = decoded['type']?.toString();
+      if (type == 'broadcast') {
+        onBroadcast?.call(decoded);
         return;
       }
 

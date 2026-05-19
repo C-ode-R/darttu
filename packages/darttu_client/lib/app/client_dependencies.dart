@@ -5,7 +5,6 @@ import 'package:darttu_client/services/auth/session_repository.dart';
 import 'package:darttu_client/services/auth/session_store.dart';
 import 'package:darttu_client/services/http/http_api.dart';
 import 'package:darttu_client/services/network/socket_client.dart';
-import 'package:darttu_client/services/network/socket_connection.dart';
 import 'package:darttu_client/services/rooms/rooms_api.dart';
 import 'package:darttu_client/services/rooms/rooms_client.dart';
 
@@ -14,14 +13,14 @@ final class ClientDependencies {
   final RoomsClient roomsClient;
   final SessionRepository sessionRepository;
   final ServerConnectService serverConnect;
-  final SocketConnection socketConnection;
+  final AppSocketClient socket;
 
   const ClientDependencies({
     required this.authClient,
     required this.roomsClient,
     required this.sessionRepository,
     required this.serverConnect,
-    required this.socketConnection,
+    required this.socket,
   });
 
   factory ClientDependencies.defaults() {
@@ -32,7 +31,7 @@ final class ClientDependencies {
       roomsClient: RoomsApi(socket: socket),
       sessionRepository: const SessionStore(),
       serverConnect: const ServerConnectService(),
-      socketConnection: socket,
+      socket: socket,
     );
   }
 }

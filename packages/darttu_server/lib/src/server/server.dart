@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import '../routes/http.dart';
 import '../routes/socket.dart';
+import '../services/rooms.dart';
 import 'socket_connection_lifecycle.dart';
 import 'socket_session_factory.dart';
 
@@ -11,6 +13,7 @@ final class Server {
   final SocketRouter _socketRouter;
   final SocketSessionFactory _socketSessionFactory;
   final SocketConnectionLifecycle _socketConnectionLifecycle;
+  final RoomsService _roomsService;
   final Future<void> Function() _onClose;
   final Set<SocketSession> _sessions = <SocketSession>{};
   HttpServer? _httpServer;
@@ -20,11 +23,13 @@ final class Server {
     required SocketRouter socketRouter,
     required SocketSessionFactory socketSessionFactory,
     required SocketConnectionLifecycle socketConnectionLifecycle,
+    required RoomsService roomsService,
     required Future<void> Function() onClose,
   }) : _httpRouter = httpRouter,
        _socketRouter = socketRouter,
        _socketSessionFactory = socketSessionFactory,
        _socketConnectionLifecycle = socketConnectionLifecycle,
+       _roomsService = roomsService,
        _onClose = onClose;
 
   Future<HttpServer> serve({String host = '0.0.0.0', int port = 8080}) async {
@@ -142,5 +147,22 @@ final class Server {
       statusCode: response.statusCode,
       body: response.body,
     );
+  }
+
+  Future<void> broadcastLobby() async {
+    final result = await _roomsService.lobby();
+    final payload = jsonEncode({
+      'type': 'broadcast',
+      'action': 'lobbyUpdate',
+      'body': result.body,
+    });
+
+    for (final session in _sessions.toList(growable: false)) {
+      try {
+        session.socket.add(payload);
+      } on Object {
+        // Skip disconnected sessions.
+      }
+    }
   }
 }

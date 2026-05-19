@@ -6,7 +6,7 @@ import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/auth_client.dart';
 import 'package:darttu_client/services/auth/session_repository.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
-import 'package:darttu_client/services/network/socket_connection.dart';
+import 'package:darttu_client/services/network/socket_client.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
@@ -56,17 +56,17 @@ final class ServerSelection implements AppScreen {
   final AuthClient _authClient;
   final SessionRepository _sessionRepository;
   final ServerConnectService _serverConnect;
-  final SocketConnection _socketConnection;
+  final AppSocketClient _socket;
 
   ServerSelection({
     required AuthClient authClient,
     required SessionRepository sessionRepository,
     required ServerConnectService serverConnect,
-    required SocketConnection socketConnection,
+    required AppSocketClient socket,
   }) : _authClient = authClient,
        _sessionRepository = sessionRepository,
        _serverConnect = serverConnect,
-       _socketConnection = socketConnection;
+       _socket = socket;
 
   @override
   Widget build(AppState state) {
@@ -165,7 +165,7 @@ final class ServerSelection implements AppScreen {
       controller.setValue<int>('auth.userId', null);
       controller.setValue<String>('auth.username', null);
       await _sessionRepository.clear();
-      await _socketConnection.disconnect();
+      await _socket.disconnect();
     }
 
     controller.setScreenState(ScreenState.auth);

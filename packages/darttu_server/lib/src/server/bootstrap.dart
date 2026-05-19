@@ -30,9 +30,12 @@ final class ServerBootstrap {
       members: memberRepo,
       presence: presenceRepo,
     );
+
+    late final Server server;
     final roomsService = RoomsService(
       rooms: roomRepo,
       membership: membership,
+      onRoomChanged: () => server.broadcastLobby(),
     );
 
     final roomMiddlewares = [
@@ -40,7 +43,7 @@ final class ServerBootstrap {
       trackPresence(membership, roomRepo),
     ];
 
-    return Server(
+    server = Server(
       httpRouter: HttpRouter(AuthHttpRoutes(service: authService).definitions),
       socketRouter: SocketRouter(
         RoomsSocketRoutes(rooms: roomsService).definitions,
@@ -50,7 +53,10 @@ final class ServerBootstrap {
       socketConnectionLifecycle: RoomsSocketConnectionLifecycle(
         membership: membership,
       ),
+      roomsService: roomsService,
       onClose: database.closeConnection,
     );
+
+    return server;
   }
 }

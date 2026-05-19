@@ -33,7 +33,7 @@ class DarttuApp {
       state: state,
       controller: controller,
       screenRouter: screenRouter,
-      onBeforeQuit: () => _dependencies.socketConnection.disconnect(),
+      onBeforeQuit: () => _dependencies.socket.disconnect(),
     );
     await tuiApp.run();
   }

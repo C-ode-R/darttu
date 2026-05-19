@@ -29,7 +29,7 @@ final class ScreenRegistry {
         authClient: dependencies.authClient,
         sessionRepository: dependencies.sessionRepository,
         serverConnect: dependencies.serverConnect,
-        socketConnection: dependencies.socketConnection,
+        socket: dependencies.socket,
       ),
       ScreenState.auth: () => AuthScreen(
         authClient: dependencies.authClient,
@@ -40,6 +40,7 @@ final class ScreenRegistry {
         roomsClient: dependencies.roomsClient,
         serverConnect: dependencies.serverConnect,
         authSessionCoordinator: authSessionCoordinator,
+        socket: dependencies.socket,
       ),
       ScreenState.room: () => RoomScreen(
         roomsClient: dependencies.roomsClient,

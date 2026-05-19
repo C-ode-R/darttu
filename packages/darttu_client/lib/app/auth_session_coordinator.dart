@@ -16,7 +16,7 @@ final class AuthSessionCoordinator {
     controller.setValue<String>('auth.username', null);
     controller.setValue<String>('auth.sessionToken', null);
     await _dependencies.sessionRepository.clear();
-    await _dependencies.socketConnection.disconnect();
+    await _dependencies.socket.disconnect();
     controller.setValue<String>('auth.message', message);
     controller.setScreenState(ScreenState.auth);
   }
