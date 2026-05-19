@@ -55,7 +55,7 @@ final class RoomScreen implements AppScreen {
             child: Column(
               children: [
                 Text(
-                  'R로 새로고침, B 또는 Esc로 방 나가기',
+                  'R로 새로고침, B 또는 Esc로 방 나가기, L로 로비로 돌아가기',
                   foregroundColor: TerminalColor.brightBlack,
                 ),
                 SizedBox(height: 1),
@@ -110,6 +110,11 @@ final class RoomScreen implements AppScreen {
   void handleInput(String input, AppState state, AppController controller) {
     if (input == 'r' || input == 'R') {
       unawaited(_loadRoom(state, controller));
+      return;
+    }
+
+    if (input == 'l' || input == 'L') {
+      controller.setScreenState(ScreenState.roomList);
       return;
     }
 
