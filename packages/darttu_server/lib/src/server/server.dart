@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../routes/http.dart';
 import '../routes/socket.dart';
+import '../services/room_membership.dart';
 import '../services/rooms.dart';
 import 'socket_connection_lifecycle.dart';
 import 'socket_session_factory.dart';
@@ -14,6 +15,7 @@ final class Server {
   final SocketSessionFactory _socketSessionFactory;
   final SocketConnectionLifecycle _socketConnectionLifecycle;
   final RoomsService _roomsService;
+  final RoomMembershipService _membership;
   final Future<void> Function() _onClose;
   final Set<SocketSession> _sessions = <SocketSession>{};
   HttpServer? _httpServer;
@@ -24,12 +26,14 @@ final class Server {
     required SocketSessionFactory socketSessionFactory,
     required SocketConnectionLifecycle socketConnectionLifecycle,
     required RoomsService roomsService,
+    required RoomMembershipService membership,
     required Future<void> Function() onClose,
   }) : _httpRouter = httpRouter,
        _socketRouter = socketRouter,
        _socketSessionFactory = socketSessionFactory,
        _socketConnectionLifecycle = socketConnectionLifecycle,
        _roomsService = roomsService,
+       _membership = membership,
        _onClose = onClose;
 
   Future<HttpServer> serve({String host = '0.0.0.0', int port = 8080}) async {
@@ -156,6 +160,12 @@ final class Server {
 
   Future<void> broadcastLobby() async {
     try {
+      for (final session in _sessions.toList(growable: false)) {
+        if (session.userId != null) {
+          await _roomsService.touchUser(session.userId!);
+        }
+      }
+      await _membership.cleanupStaleUsers();
       final result = await _roomsService.lobby();
       final payload = jsonEncode({
         'type': 'broadcast',

@@ -54,6 +54,7 @@ final class ServerBootstrap {
         membership: membership,
       ),
       roomsService: roomsService,
+      membership: membership,
       onClose: database.closeConnection,
     );
 
