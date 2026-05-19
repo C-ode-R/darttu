@@ -61,6 +61,10 @@ final class Server {
           final session = await _socketSessionFactory.create(request, socket);
           _sessions.add(session);
           unawaited(_handleSocket(session));
+          if (session.userId != null) {
+            await _roomsService.touchUser(session.userId!);
+            unawaited(broadcastLobby());
+          }
           continue;
         }
 

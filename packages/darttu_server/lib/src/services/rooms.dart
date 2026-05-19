@@ -36,6 +36,10 @@ final class RoomsService {
     return const RoomsResult(statusCode: 200, body: {'ok': true});
   }
 
+  Future<void> touchUser(int userId) async {
+    await _rooms.touchUser(userId);
+  }
+
   Future<RoomsResult> list() async {
     final rooms = await _rooms.list();
 
