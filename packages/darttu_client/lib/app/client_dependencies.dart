@@ -28,7 +28,7 @@ final class ClientDependencies {
     final socket = AppSocketClient();
     final http = const HttpApiService();
     return ClientDependencies(
-      authClient: AuthApi(http: http, socket: socket),
+      authClient: AuthApi(http: http),
       roomsClient: RoomsApi(socket: socket),
       sessionRepository: const SessionStore(),
       serverConnect: const ServerConnectService(),

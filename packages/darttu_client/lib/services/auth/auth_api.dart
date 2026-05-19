@@ -1,23 +1,16 @@
-import '../network/socket_client.dart';
 import '../http/http_api.dart';
 import 'auth_client.dart';
 
 final class AuthApi implements AuthClient {
   final HttpApiService _http;
-  final AppSocketClient _socket;
 
-  AuthApi({
-    required HttpApiService http,
-    required AppSocketClient socket,
-  }) : _http = http,
-       _socket = socket;
+  AuthApi({required HttpApiService http}) : _http = http;
 
   @override
   Future<bool> healthCheck(Uri uri) async {
     try {
-      await _socket.connect(uri: uri);
-      final response = await _socket.call(action: 'ping');
-      return response.statusCode == 200 && response.body['ok'] == true;
+      final response = await _http.getJson(uri);
+      return response.isOk;
     } on Object {
       return false;
     }

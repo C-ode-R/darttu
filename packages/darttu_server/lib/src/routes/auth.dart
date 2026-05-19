@@ -11,10 +11,15 @@ final class AuthHttpRoutes {
 
   List<HttpRouteDefinition> get definitions {
     return [
+      httpRoute(HttpRouteMethod.get, '/health', _health),
       httpRoute(HttpRouteMethod.post, '/auth/signup', _signup),
       httpRoute(HttpRouteMethod.post, '/auth/login', _login),
       httpRoute(HttpRouteMethod.get, '/auth/session', _session),
     ];
+  }
+
+  Future<void> _health(HttpRequest request) async {
+    writeJsonResponse(request.response, 200, {'status': 'ok'});
   }
 
   Future<void> _signup(HttpRequest request) async {

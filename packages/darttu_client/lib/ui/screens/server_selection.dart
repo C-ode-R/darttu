@@ -124,7 +124,7 @@ final class ServerSelection implements AppScreen {
 
     const host = officialServerHost;
     final healthy = await _authClient.healthCheck(
-      _serverConnect.socketUri(host: host),
+      _serverConnect.healthUri(host: host),
     );
     if (!healthy) {
       controller.setValue<String>(
