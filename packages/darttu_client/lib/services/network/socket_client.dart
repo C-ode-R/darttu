@@ -117,6 +117,7 @@ final class AppSocketClient implements SocketConnection {
 
       final type = decoded['type']?.toString();
       if (type == 'broadcast') {
+        stderr.writeln('[socket] broadcast received: ${decoded['action']}');
         onBroadcast?.call(decoded);
         return;
       }

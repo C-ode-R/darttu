@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:darttu_client/app/auth_session_coordinator.dart';
 import 'package:darttu_client/app/app_controller.dart';
@@ -214,10 +215,17 @@ final class RoomListScreen implements AppScreen {
 
   void _handleBroadcast(AppState state, AppController controller) {
     _socket.onBroadcast = (message) {
+      stderr.writeln('[broadcast] received: ${message['action']}');
       final action = message['action']?.toString();
       if (action != 'lobbyUpdate') return;
-      if (state.screenState != ScreenState.roomList) return;
-      if (state.getOrDefault<bool>('roomList.isCreating', false)) return;
+      if (state.screenState != ScreenState.roomList) {
+        stderr.writeln('[broadcast] ignored: not on roomList screen');
+        return;
+      }
+      if (state.getOrDefault<bool>('roomList.isCreating', false)) {
+        stderr.writeln('[broadcast] ignored: creating room');
+        return;
+      }
 
       final body = message['body'];
       if (body is! Map<String, Object?>) return;
@@ -234,6 +242,8 @@ final class RoomListScreen implements AppScreen {
           .whereType<Map<Object?, Object?>>()
           .map(_parseOnlineUser)
           .toList(growable: false);
+
+      stderr.writeln('[broadcast] updating: ${rooms.length} rooms, ${onlineUsers.length} users');
 
       final currentSelectedIndex = state.getOrDefault<int>(
         'roomList.selectedIndex',

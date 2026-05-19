@@ -150,19 +150,23 @@ final class Server {
   }
 
   Future<void> broadcastLobby() async {
-    final result = await _roomsService.lobby();
-    final payload = jsonEncode({
-      'type': 'broadcast',
-      'action': 'lobbyUpdate',
-      'body': result.body,
-    });
+    try {
+      final result = await _roomsService.lobby();
+      final payload = jsonEncode({
+        'type': 'broadcast',
+        'action': 'lobbyUpdate',
+        'body': result.body,
+      });
 
-    for (final session in _sessions.toList(growable: false)) {
-      try {
-        session.socket.add(payload);
-      } on Object {
-        // Skip disconnected sessions.
+      for (final session in _sessions.toList(growable: false)) {
+        try {
+          session.socket.add(payload);
+        } on Object {
+          // Skip disconnected sessions.
+        }
       }
+    } on Object catch (e, st) {
+      stderr.writeln('[broadcast] error: $e\n$st');
     }
   }
 }
