@@ -1,8 +1,9 @@
 SQLite-backed auth server example.
 
-- `GET /health`
 - `POST /auth/signup`
 - `POST /auth/login`
+- `GET /auth/session`
+- `GET /ws` upgrade for lobby/room actions
 
 Run from the workspace root after one-time dependency resolution:
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -10,12 +11,12 @@ Future<Map<String, Object?>> _jsonResponse(HttpClientResponse response) async {
 }
 
 void main() {
-  test('health, signup, and login routes work', () async {
+  test('auth uses http and rooms use websocket', () async {
     final tempDir = await Directory.systemTemp.createTemp(
       'darttu_server_test_',
     );
     final databasePath = '${tempDir.path}/server.sqlite';
-    final server = Server(databasePath: databasePath);
+    final server = ServerBootstrap.build(databasePath: databasePath);
     final httpServer = await server.serve(host: '127.0.0.1', port: 0);
 
     addTearDown(() async {
@@ -28,13 +29,6 @@ void main() {
 
     final healthClient = HttpClient();
     addTearDown(() => healthClient.close(force: true));
-    final healthRequest = await healthClient.getUrl(
-      Uri.parse('http://127.0.0.1:${httpServer.port}/health'),
-    );
-    final healthResponse = await healthRequest.close();
-    expect(healthResponse.statusCode, HttpStatus.ok);
-    expect(await _jsonResponse(healthResponse), {'status': 'ok'});
-
     final signupRequest = await healthClient.postUrl(
       Uri.parse('http://127.0.0.1:${httpServer.port}/auth/signup'),
     );
@@ -87,16 +81,51 @@ void main() {
     expect(sessionBody['username'], 'alice');
     expect(sessionBody['sessionToken'], loginSessionToken);
 
-    final roomsRequest = await healthClient.getUrl(
-      Uri.parse('http://127.0.0.1:${httpServer.port}/rooms'),
+    final socket = await WebSocket.connect(
+      'ws://127.0.0.1:${httpServer.port}/ws',
+      headers: <String, Object>{'authorization': 'Bearer $loginSessionToken'},
     );
-    roomsRequest.headers.set(
-      HttpHeaders.authorizationHeader,
-      'Bearer $loginSessionToken',
-    );
-    final roomsResponse = await roomsRequest.close();
-    expect(roomsResponse.statusCode, HttpStatus.ok);
-    final roomsBody = await _jsonResponse(roomsResponse);
+    addTearDown(socket.close);
+    final pendingResponses = <String, Completer<Map<String, Object?>>>{};
+    final socketSubscription = socket.listen((message) {
+      if (message is! String) {
+        return;
+      }
+
+      final decoded = jsonDecode(message) as Map<String, Object?>;
+      final requestId = decoded['requestId']?.toString();
+      if (requestId == null) {
+        return;
+      }
+
+      pendingResponses.remove(requestId)?.complete(decoded);
+    });
+    addTearDown(socketSubscription.cancel);
+
+    Future<Map<String, Object?>> socketCall(
+      String requestId,
+      String action, {
+      Map<String, Object?> payload = const <String, Object?>{},
+    }) async {
+      final completer = Completer<Map<String, Object?>>();
+      pendingResponses[requestId] = completer;
+      socket.add(
+        jsonEncode({
+          'requestId': requestId,
+          'action': action,
+          'payload': payload,
+        }),
+      );
+
+      return completer.future;
+    }
+
+    final pingResponse = await socketCall('1', 'ping');
+    expect(pingResponse['statusCode'], HttpStatus.ok);
+
+    final roomsResponse = await socketCall('2', 'lobby');
+    expect(roomsResponse['statusCode'], HttpStatus.ok);
+    final roomsBody = roomsResponse['body'] as Map<String, Object?>;
     final rooms = roomsBody['rooms'] as List<Object?>;
     expect(rooms.length, greaterThanOrEqualTo(3));
     expect(rooms.first, {
@@ -106,18 +135,13 @@ void main() {
       'maxPlayers': 4,
     });
 
-    final createRoomRequest = await healthClient.postUrl(
-      Uri.parse('http://127.0.0.1:${httpServer.port}/rooms'),
+    final createRoomResponse = await socketCall(
+      '3',
+      'createRoom',
+      payload: {'name': '새 방', 'maxPlayers': 4},
     );
-    createRoomRequest.headers.contentType = ContentType.json;
-    createRoomRequest.headers.set(
-      HttpHeaders.authorizationHeader,
-      'Bearer $loginSessionToken',
-    );
-    createRoomRequest.write(jsonEncode({'name': '새 방', 'maxPlayers': 4}));
-    final createRoomResponse = await createRoomRequest.close();
-    expect(createRoomResponse.statusCode, HttpStatus.created);
-    final createRoomBody = await _jsonResponse(createRoomResponse);
+    expect(createRoomResponse['statusCode'], HttpStatus.created);
+    final createRoomBody = createRoomResponse['body'] as Map<String, Object?>;
     expect(createRoomBody['room'], {
       'id': 4,
       'name': '새 방',
@@ -125,23 +149,12 @@ void main() {
       'maxPlayers': 4,
     });
 
-    final duplicateRoomRequest = await healthClient.postUrl(
-      Uri.parse('http://127.0.0.1:${httpServer.port}/rooms'),
+    final duplicateRoomResponse = await socketCall(
+      '4',
+      'createRoom',
+      payload: {'name': '새 방'},
     );
-    duplicateRoomRequest.headers.contentType = ContentType.json;
-    duplicateRoomRequest.headers.set(
-      HttpHeaders.authorizationHeader,
-      'Bearer $loginSessionToken',
-    );
-    duplicateRoomRequest.write(jsonEncode({'name': '새 방'}));
-    final duplicateRoomResponse = await duplicateRoomRequest.close();
-    expect(duplicateRoomResponse.statusCode, HttpStatus.conflict);
-
-    final unauthorizedRoomsRequest = await healthClient.getUrl(
-      Uri.parse('http://127.0.0.1:${httpServer.port}/rooms'),
-    );
-    final unauthorizedRoomsResponse = await unauthorizedRoomsRequest.close();
-    expect(unauthorizedRoomsResponse.statusCode, HttpStatus.unauthorized);
+    expect(duplicateRoomResponse['statusCode'], HttpStatus.conflict);
 
     final invalidSessionRequest = await healthClient.getUrl(
       Uri.parse('http://127.0.0.1:${httpServer.port}/auth/session'),
@@ -162,5 +175,12 @@ void main() {
     );
     final invalidLoginResponse = await invalidLoginRequest.close();
     expect(invalidLoginResponse.statusCode, HttpStatus.unauthorized);
+
+    final leaveRoomResponse = await socketCall(
+      '5',
+      'leaveRoom',
+      payload: {'roomId': 4},
+    );
+    expect(leaveRoomResponse['statusCode'], HttpStatus.ok);
   });
 }

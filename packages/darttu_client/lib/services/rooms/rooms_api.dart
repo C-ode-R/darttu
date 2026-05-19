@@ -1,95 +1,19 @@
-import 'package:darttu_client/services/http/http_api.dart';
-import 'package:darttu_client/services/network/socket_client.dart';
+import '../http/http_api.dart';
+import '../network/socket_client.dart';
+import 'models.dart';
+import 'rooms_client.dart';
 
-final class RoomSummary {
-  final int id;
-  final String name;
-  final int currentPlayers;
-  final int maxPlayers;
-
-  const RoomSummary({
-    required this.id,
-    required this.name,
-    required this.currentPlayers,
-    required this.maxPlayers,
-  });
-}
-
-final class OnlineUserSummary {
-  final int userId;
-  final String username;
-  final int? roomId;
-  final String? roomName;
-
-  const OnlineUserSummary({
-    required this.userId,
-    required this.username,
-    required this.roomId,
-    required this.roomName,
-  });
-}
-
-final class RoomMemberSummary {
-  final int userId;
-  final String username;
-  final bool isHost;
-
-  const RoomMemberSummary({
-    required this.userId,
-    required this.username,
-    required this.isHost,
-  });
-}
-
-final class RoomDetail {
-  final int id;
-  final String name;
-  final int currentPlayers;
-  final int maxPlayers;
-  final List<RoomMemberSummary> members;
-
-  const RoomDetail({
-    required this.id,
-    required this.name,
-    required this.currentPlayers,
-    required this.maxPlayers,
-    required this.members,
-  });
-}
-
-final class LobbySnapshot {
-  final List<RoomSummary> rooms;
-  final List<OnlineUserSummary> onlineUsers;
-
-  const LobbySnapshot({required this.rooms, required this.onlineUsers});
-}
-
-final class RoomsApiResult {
-  final int statusCode;
-  final String? error;
-  final RoomSummary? room;
-  final RoomDetail? roomDetail;
-  final LobbySnapshot? lobby;
-
-  const RoomsApiResult({
-    required this.statusCode,
-    required this.error,
-    required this.room,
-    required this.roomDetail,
-    required this.lobby,
-  });
-}
-
-final class RoomsApiService {
+final class RoomsApi implements RoomsClient {
   final AppSocketClient _socket;
 
-  RoomsApiService({AppSocketClient? socket})
-    : _socket = socket ?? appSocketClient;
+  RoomsApi({required AppSocketClient socket}) : _socket = socket;
 
+  @override
   Future<RoomsApiResult> fetchLobby({
     required Uri uri,
     required String sessionToken,
   }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
     final response = await _socket.call(action: 'lobby');
     final roomsJson = response.body['rooms'];
     final usersJson = response.body['onlineUsers'];
@@ -115,12 +39,14 @@ final class RoomsApiService {
     );
   }
 
+  @override
   Future<RoomsApiResult> createRoom({
     required Uri uri,
     required String sessionToken,
     required String name,
     int maxPlayers = 4,
   }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
     final response = await _socket.call(
       action: 'createRoom',
       payload: {'name': name, 'maxPlayers': maxPlayers},
@@ -139,13 +65,16 @@ final class RoomsApiService {
     );
   }
 
+  @override
   Future<RoomsApiResult> joinRoom({
     required Uri uri,
     required String sessionToken,
+    required int roomId,
   }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
     final response = await _socket.call(
       action: 'joinRoom',
-      payload: {'roomId': _roomIdFromUri(uri)},
+      payload: {'roomId': roomId},
     );
     final roomJson = response.body['room'];
     if (roomJson is! Map<Object?, Object?>) {
@@ -161,13 +90,16 @@ final class RoomsApiService {
     );
   }
 
+  @override
   Future<RoomsApiResult> fetchRoom({
     required Uri uri,
     required String sessionToken,
+    required int roomId,
   }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
     final response = await _socket.call(
       action: 'fetchRoom',
-      payload: {'roomId': _roomIdFromUri(uri)},
+      payload: {'roomId': roomId},
     );
     final roomJson = response.body['room'];
     if (roomJson is! Map<Object?, Object?>) {
@@ -183,13 +115,16 @@ final class RoomsApiService {
     );
   }
 
+  @override
   Future<RoomsApiResult> leaveRoom({
     required Uri uri,
     required String sessionToken,
+    required int roomId,
   }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
     final response = await _socket.call(
       action: 'leaveRoom',
-      payload: {'roomId': _roomIdFromUri(uri)},
+      payload: {'roomId': roomId},
     );
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return RoomsApiResult(
@@ -212,15 +147,6 @@ final class RoomsApiService {
       roomDetail: null,
       lobby: null,
     );
-  }
-
-  int _roomIdFromUri(Uri uri) {
-    final segments = uri.pathSegments;
-    if (segments.length < 2) {
-      return -1;
-    }
-
-    return int.tryParse(segments[1]) ?? -1;
   }
 
   RoomSummary _parseRoom(Map<Object?, Object?> json) {
@@ -247,10 +173,10 @@ final class RoomsApiService {
         ? membersJson
               .whereType<Map<Object?, Object?>>()
               .map(
-                (memberJson) => RoomMemberSummary(
-                  userId: (memberJson['userId'] as num?)?.toInt() ?? 0,
-                  username: memberJson['username']?.toString() ?? '알 수 없는 사용자',
-                  isHost: memberJson['isHost'] == true,
+                (m) => RoomMemberSummary(
+                  userId: (m['userId'] as num?)?.toInt() ?? 0,
+                  username: m['username']?.toString() ?? '알 수 없는 사용자',
+                  isHost: m['isHost'] == true,
                 ),
               )
               .toList(growable: false)

@@ -1,5 +1,5 @@
-import '../repositories/auth.dart';
 import '../repositories/rooms.dart';
+import 'room_membership.dart';
 
 final class RoomsResult {
   final int statusCode;
@@ -9,94 +9,47 @@ final class RoomsResult {
 }
 
 final class RoomsService {
-  final AuthRepo _authRepo;
-  final RoomsRepo _roomsRepo;
+  final RoomRepo _rooms;
+  final RoomMembershipService _membership;
 
-  RoomsService({required AuthRepo authRepo, required RoomsRepo roomsRepo})
-    : _authRepo = authRepo,
-      _roomsRepo = roomsRepo;
+  RoomsService({
+    required RoomRepo rooms,
+    required RoomMembershipService membership,
+  }) : _rooms = rooms,
+       _membership = membership;
 
-  Future<RoomsResult> lobby(String sessionToken) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-    final snapshot = await _roomsRepo.getLobbySnapshot();
+  Future<RoomsResult> lobby() async {
+    final snapshot = await _rooms.lobbySnapshot();
 
     return RoomsResult(
       statusCode: 200,
       body: {
-        'rooms': snapshot.rooms.map(_roomJson).toList(growable: false),
+        'rooms': snapshot.rooms.map(RoomsPresenter.toJson).toList(growable: false),
         'onlineUsers': snapshot.onlineUsers
-            .map(
-              (user) => <String, Object?>{
-                'userId': user.userId,
-                'username': user.username,
-                'roomId': user.roomId,
-                'roomName': user.roomName,
-              },
-            )
+            .map(RoomsPresenter.onlineUserToJson)
             .toList(growable: false),
       },
     );
   }
 
-  Future<RoomsResult> heartbeat(String sessionToken) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-
+  Future<RoomsResult> heartbeat() async {
     return const RoomsResult(statusCode: 200, body: {'ok': true});
   }
 
-  Future<RoomsResult> listRooms(String sessionToken) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-    final rooms = await _roomsRepo.listRooms();
+  Future<RoomsResult> list() async {
+    final rooms = await _rooms.list();
 
     return RoomsResult(
       statusCode: 200,
-      body: {'rooms': rooms.map(_roomJson).toList(growable: false)},
+      body: {'rooms': rooms.map(RoomsPresenter.toJson).toList(growable: false)},
     );
   }
 
-  Future<RoomsResult> createRoom({
-    required String sessionToken,
+  Future<RoomsResult> create({
     required String name,
-    int maxPlayers = 4,
+    required int maxPlayers,
+    required int ownerUserId,
   }) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-
     final normalizedName = name.trim();
     if (normalizedName.isEmpty) {
       return const RoomsResult(
@@ -112,11 +65,11 @@ final class RoomsService {
       );
     }
 
-    final room = await _roomsRepo.createRoom(
+    final room = await _membership.createRoom(
       name: normalizedName,
       currentPlayers: 1,
       maxPlayers: maxPlayers,
-      ownerUserId: sessionState.user.id,
+      ownerUserId: ownerUserId,
     );
     if (room == null) {
       return const RoomsResult(
@@ -125,24 +78,11 @@ final class RoomsService {
       );
     }
 
-    return RoomsResult(statusCode: 201, body: {'room': _roomJson(room)});
+    return RoomsResult(statusCode: 201, body: {'room': RoomsPresenter.toJson(room)});
   }
 
-  Future<RoomsResult> roomDetail({
-    required String sessionToken,
-    required int roomId,
-  }) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-    final room = await _roomsRepo.getRoom(roomId);
+  Future<RoomsResult> detail({required int roomId}) async {
+    final room = await _rooms.detail(roomId);
     if (room == null) {
       return const RoomsResult(
         statusCode: 404,
@@ -150,24 +90,14 @@ final class RoomsService {
       );
     }
 
-    return RoomsResult(statusCode: 200, body: {'room': _roomDetailJson(room)});
+    return RoomsResult(statusCode: 200, body: {'room': RoomsPresenter.toDetailJson(room)});
   }
 
-  Future<RoomsResult> joinRoom({
-    required String sessionToken,
+  Future<RoomsResult> join({
     required int roomId,
+    required int userId,
   }) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-    final existingRoom = await _roomsRepo.getRoom(roomId);
+    final existingRoom = await _rooms.detail(roomId);
     if (existingRoom == null) {
       return const RoomsResult(
         statusCode: 404,
@@ -175,16 +105,11 @@ final class RoomsService {
       );
     }
     if (existingRoom.currentPlayers >= existingRoom.maxPlayers &&
-        !existingRoom.members.any(
-          (member) => member.userId == sessionState.user.id,
-        )) {
+        !existingRoom.members.any((m) => m.userId == userId)) {
       return const RoomsResult(statusCode: 409, body: {'error': 'room_full'});
     }
 
-    final room = await _roomsRepo.joinRoom(
-      roomId: roomId,
-      userId: sessionState.user.id,
-    );
+    final room = await _membership.joinRoom(roomId: roomId, userId: userId);
     if (room == null) {
       return const RoomsResult(
         statusCode: 404,
@@ -192,47 +117,20 @@ final class RoomsService {
       );
     }
 
-    return RoomsResult(statusCode: 200, body: {'room': _roomDetailJson(room)});
+    return RoomsResult(statusCode: 200, body: {'room': RoomsPresenter.toDetailJson(room)});
   }
 
-  Future<RoomsResult> leaveRoom({
-    required String sessionToken,
+  Future<RoomsResult> leave({
     required int roomId,
+    required int userId,
   }) async {
-    final sessionState = await _validatedSession(sessionToken);
-    if (sessionState == null) {
-      return const RoomsResult(
-        statusCode: 401,
-        body: {'error': 'invalid_session'},
-      );
-    }
-
-    await _roomsRepo.cleanupStaleUsers();
-    await _roomsRepo.touchUser(sessionState.user.id);
-    await _roomsRepo.leaveRoom(roomId: roomId, userId: sessionState.user.id);
-
+    await _membership.leaveRoom(roomId: roomId, userId: userId);
     return const RoomsResult(statusCode: 200, body: {'ok': true});
   }
+}
 
-  Future<_ValidatedSession?> _validatedSession(String sessionToken) async {
-    if (sessionToken.isEmpty) {
-      return null;
-    }
-
-    final session = await _authRepo.findSessionByToken(sessionToken);
-    if (session == null) {
-      return null;
-    }
-
-    final user = await _authRepo.findById(session.userId);
-    if (user == null) {
-      return null;
-    }
-
-    return _ValidatedSession(user: user);
-  }
-
-  Map<String, Object?> _roomJson(RoomSummary room) {
+final class RoomsPresenter {
+  static Map<String, Object?> toJson(RoomSummary room) {
     return {
       'id': room.id,
       'name': room.name,
@@ -241,7 +139,7 @@ final class RoomsService {
     };
   }
 
-  Map<String, Object?> _roomDetailJson(RoomDetail room) {
+  static Map<String, Object?> toDetailJson(RoomDetail room) {
     return {
       'id': room.id,
       'name': room.name,
@@ -258,10 +156,13 @@ final class RoomsService {
           .toList(growable: false),
     };
   }
-}
 
-final class _ValidatedSession {
-  final AuthUser user;
-
-  const _ValidatedSession({required this.user});
+  static Map<String, Object?> onlineUserToJson(OnlineUserSummary user) {
+    return <String, Object?>{
+      'userId': user.userId,
+      'username': user.username,
+      'roomId': user.roomId,
+      'roomName': user.roomName,
+    };
+  }
 }

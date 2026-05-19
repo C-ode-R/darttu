@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../http/http_api.dart';
+import 'socket_connection.dart';
 
-final appSocketClient = AppSocketClient();
-
-final class AppSocketClient {
+final class AppSocketClient implements SocketConnection {
   WebSocket? _socket;
   Uri? _uri;
+  String? _sessionToken;
   StreamSubscription<Object?>? _subscription;
   int _requestCounter = 0;
   final Map<String, Completer<ApiResponse>> _pending =
@@ -16,17 +16,23 @@ final class AppSocketClient {
 
   bool get isConnected => _socket != null;
 
-  Future<void> connect({required Uri uri}) async {
-    if (_socket != null && _uri == uri) {
+  Future<void> connect({required Uri uri, String? sessionToken}) async {
+    if (_socket != null && _uri == uri && _sessionToken == sessionToken) {
       return;
     }
 
     await disconnect();
 
     try {
-      final socket = await WebSocket.connect(uri.toString());
+      final socket = await WebSocket.connect(
+        uri.toString(),
+        headers: sessionToken == null || sessionToken.isEmpty
+            ? null
+            : <String, Object>{'authorization': 'Bearer $sessionToken'},
+      );
       _socket = socket;
       _uri = uri;
+      _sessionToken = sessionToken;
       _subscription = socket.listen(
         _handleMessage,
         onDone: _handleClosed,
@@ -42,10 +48,12 @@ final class AppSocketClient {
     }
   }
 
+  @override
   Future<void> disconnect() async {
     final socket = _socket;
     _socket = null;
     _uri = null;
+    _sessionToken = null;
 
     await _subscription?.cancel();
     _subscription = null;
@@ -54,7 +62,9 @@ final class AppSocketClient {
       await socket.close();
     }
 
-    _failPending(const ApiResponse(statusCode: 503, body: {'error': 'server_unreachable'}));
+    _failPending(
+      const ApiResponse(statusCode: 503, body: {'error': 'server_unreachable'}),
+    );
   }
 
   Future<ApiResponse> call({
@@ -134,7 +144,10 @@ final class AppSocketClient {
   void _handleClosed() {
     _socket = null;
     _uri = null;
-    _failPending(const ApiResponse(statusCode: 503, body: {'error': 'server_unreachable'}));
+    _sessionToken = null;
+    _failPending(
+      const ApiResponse(statusCode: 503, body: {'error': 'server_unreachable'}),
+    );
   }
 
   void _failPending(ApiResponse response) {

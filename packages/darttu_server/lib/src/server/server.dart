@@ -1,29 +1,31 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
-import '../database/database.dart';
-import '../repositories/auth.dart';
-import '../repositories/rooms.dart';
-import '../services/auth.dart';
-import '../services/rooms.dart';
+import '../routes/http.dart';
+import '../routes/socket.dart';
+import 'socket_connection_lifecycle.dart';
+import 'socket_session_factory.dart';
 
 final class Server {
-  final AppDatabase _database;
-  late final DriftRoomsRepo _roomsRepo;
-  late final AuthService _authService;
-  late final RoomsService _roomsService;
-  final Set<_SocketSession> _sessions = <_SocketSession>{};
+  final HttpRouter _httpRouter;
+  final SocketRouter _socketRouter;
+  final SocketSessionFactory _socketSessionFactory;
+  final SocketConnectionLifecycle _socketConnectionLifecycle;
+  final Future<void> Function() _onClose;
+  final Set<SocketSession> _sessions = <SocketSession>{};
   HttpServer? _httpServer;
 
-  Server({String databasePath = 'darttu_server.sqlite'})
-    : _database = AppDatabase(databasePath) {
-    final authRepo = DriftAuthRepo(database: _database);
-    final roomsRepo = DriftRoomsRepo(database: _database);
-    _roomsRepo = roomsRepo;
-    _authService = AuthService(repo: authRepo);
-    _roomsService = RoomsService(authRepo: authRepo, roomsRepo: roomsRepo);
-  }
+  Server({
+    required HttpRouter httpRouter,
+    required SocketRouter socketRouter,
+    required SocketSessionFactory socketSessionFactory,
+    required SocketConnectionLifecycle socketConnectionLifecycle,
+    required Future<void> Function() onClose,
+  }) : _httpRouter = httpRouter,
+       _socketRouter = socketRouter,
+       _socketSessionFactory = socketSessionFactory,
+       _socketConnectionLifecycle = socketConnectionLifecycle,
+       _onClose = onClose;
 
   Future<HttpServer> serve({String host = '0.0.0.0', int port = 8080}) async {
     final server = await HttpServer.bind(host, port);
@@ -37,7 +39,7 @@ final class Server {
       await session.socket.close();
     }
     await _httpServer?.close(force: true);
-    await _database.closeConnection();
+    await _onClose();
   }
 
   Future<void> _listen(HttpServer server) async {
@@ -48,27 +50,33 @@ final class Server {
       );
 
       try {
-        if (request.uri.path == '/health') {
-          _writeJsonResponse(request.response, 200, {'status': 'ok'});
-          continue;
-        }
-
-        if (request.uri.path == '/ws' && WebSocketTransformer.isUpgradeRequest(request)) {
+        if (request.uri.path == '/ws' &&
+            WebSocketTransformer.isUpgradeRequest(request)) {
           final socket = await WebSocketTransformer.upgrade(request);
-          final session = _SocketSession(socket: socket);
+          final session = await _socketSessionFactory.create(request, socket);
           _sessions.add(session);
           unawaited(_handleSocket(session));
           continue;
         }
 
-        _writeJsonResponse(request.response, 404, {'error': 'not_found'});
+        final handled = await _httpRouter.handle(request);
+        if (handled) {
+          unawaited(request.response.close());
+          continue;
+        }
+
+        writeJsonResponse(request.response, 404, {'error': 'not_found'});
+        unawaited(request.response.close());
       } on Object catch (error, stackTrace) {
         stdout.writeln(
           '[${DateTime.now().toIso8601String()}] !! ${request.method} ${request.uri.path} failed: $error',
         );
         stderr.writeln(stackTrace);
         try {
-          _writeJsonResponse(request.response, 500, {'error': 'internal_server_error'});
+          writeJsonResponse(request.response, 500, {
+            'error': 'internal_server_error',
+          });
+          await request.response.close();
         } on Object {
           await request.response.close();
         }
@@ -76,7 +84,7 @@ final class Server {
     }
   }
 
-  Future<void> _handleSocket(_SocketSession session) async {
+  Future<void> _handleSocket(SocketSession session) async {
     try {
       await for (final message in session.socket) {
         if (message is! String) {
@@ -87,22 +95,17 @@ final class Server {
       }
     } finally {
       _sessions.remove(session);
-      if (session.userId != null) {
-        await _roomsRepo.disconnectUser(session.userId!);
-      }
+      await _socketConnectionLifecycle.onDisconnected(session);
     }
   }
 
-  Future<void> _handleSocketMessage(_SocketSession session, String message) async {
-    Map<String, Object?> decoded;
-    try {
-      final json = jsonDecode(message);
-      if (json is! Map<String, Object?>) {
-        throw const FormatException('invalid_message');
-      }
-      decoded = json;
-    } on Object {
-      _sendSocketResponse(
+  Future<void> _handleSocketMessage(
+    SocketSession session,
+    String message,
+  ) async {
+    final decoded = decodeSocketMessage(message);
+    if (decoded == null) {
+      sendSocketResponse(
         session.socket,
         requestId: null,
         statusCode: 400,
@@ -114,185 +117,30 @@ final class Server {
     final requestId = decoded['requestId']?.toString();
     final action = decoded['action']?.toString() ?? '';
     final payload = decoded['payload'];
-    final data = payload is Map<String, Object?> ? payload : <String, Object?>{};
+    final data = payload is Map<String, Object?>
+        ? payload
+        : <String, Object?>{};
 
-    switch (action) {
-      case 'ping':
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: 200,
-          body: {'ok': true},
-        );
-        return;
-      case 'signup':
-        final result = await _authService.signup(
-          username: data['username']?.toString() ?? '',
-          password: data['password']?.toString() ?? '',
-        );
-        await _applyAuthResult(session, result);
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'login':
-        final result = await _authService.login(
-          username: data['username']?.toString() ?? '',
-          password: data['password']?.toString() ?? '',
-        );
-        await _applyAuthResult(session, result);
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'session':
-        final result = await _authService.session(
-          data['sessionToken']?.toString() ?? '',
-        );
-        await _applyAuthResult(session, result);
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'lobby':
-        final result = await _roomsService.lobby(session.sessionToken ?? '');
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'createRoom':
-        final result = await _roomsService.createRoom(
-          sessionToken: session.sessionToken ?? '',
-          name: data['name']?.toString() ?? '',
-          maxPlayers: (data['maxPlayers'] as num?)?.toInt() ?? 4,
-        );
-        if (result.statusCode == 201) {
-          session.currentRoomId = result.body['room'] is Map<String, Object?>
-              ? ((result.body['room']! as Map<String, Object?>)['id'] as num?)?.toInt()
-              : session.currentRoomId;
-        }
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'joinRoom':
-        final result = await _roomsService.joinRoom(
-          sessionToken: session.sessionToken ?? '',
-          roomId: (data['roomId'] as num?)?.toInt() ?? -1,
-        );
-        if (result.statusCode == 200) {
-          session.currentRoomId = (result.body['room'] as Map<String, Object?>?)?['id'] is num
-              ? (((result.body['room'] as Map<String, Object?>)['id']) as num).toInt()
-              : session.currentRoomId;
-        }
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'fetchRoom':
-        final result = await _roomsService.roomDetail(
-          sessionToken: session.sessionToken ?? '',
-          roomId: (data['roomId'] as num?)?.toInt() ?? -1,
-        );
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
-      case 'leaveRoom':
-        final result = await _roomsService.leaveRoom(
-          sessionToken: session.sessionToken ?? '',
-          roomId: (data['roomId'] as num?)?.toInt() ?? -1,
-        );
-        if (result.statusCode == 200) {
-          session.currentRoomId = null;
-        }
-        _sendSocketResponse(
-          session.socket,
-          requestId: requestId,
-          statusCode: result.statusCode,
-          body: result.body,
-        );
-        return;
+    final response = await _socketRouter.route(
+      action,
+      SocketRouteContext(session: session, requestId: requestId, payload: data),
+    );
+
+    if (response == null) {
+      sendSocketResponse(
+        session.socket,
+        requestId: requestId,
+        statusCode: 400,
+        body: {'error': 'unknown_action'},
+      );
+      return;
     }
 
-    _sendSocketResponse(
+    sendSocketResponse(
       session.socket,
       requestId: requestId,
-      statusCode: 400,
-      body: {'error': 'unknown_action'},
+      statusCode: response.statusCode,
+      body: response.body,
     );
   }
-
-  Future<void> _applyAuthResult(_SocketSession session, AuthResult result) async {
-    if (result.statusCode < 200 || result.statusCode >= 300) {
-      return;
-    }
-
-    final token = result.body['sessionToken']?.toString();
-    final userId = result.body['userId'] as int?;
-    if (token == null || userId == null) {
-      return;
-    }
-
-    session.sessionToken = token;
-    session.userId = userId;
-    await _roomsRepo.touchUser(userId);
-  }
-
-  void _sendSocketResponse(
-    WebSocket socket, {
-    required String? requestId,
-    required int statusCode,
-    required Map<String, Object?> body,
-  }) {
-    socket.add(
-      jsonEncode({
-        'type': 'response',
-        'requestId': requestId,
-        'statusCode': statusCode,
-        'body': body,
-      }),
-    );
-  }
-
-  void _writeJsonResponse(
-    HttpResponse response,
-    int statusCode,
-    Map<String, Object?> body,
-  ) {
-    response.statusCode = statusCode;
-    response.headers.contentType = ContentType.json;
-    response.write(jsonEncode(body));
-    unawaited(response.close());
-  }
-}
-
-final class _SocketSession {
-  final WebSocket socket;
-  int? userId;
-  int? currentRoomId;
-  String? sessionToken;
-
-  _SocketSession({required this.socket});
 }

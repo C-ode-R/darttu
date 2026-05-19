@@ -1,61 +1,52 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:shelf/shelf.dart';
-
-import 'http.dart';
 import '../services/auth.dart';
+import 'http.dart';
 
-final class AuthRoute {
+final class AuthHttpRoutes {
   final AuthService _service;
 
-  AuthRoute({required AuthService service}) : _service = service;
+  AuthHttpRoutes({required AuthService service}) : _service = service;
 
-  Response health(Request request, Map<String, String> params) {
-    stdout.writeln('[auth] health check');
-    return jsonResponse(200, _service.health());
+  List<HttpRouteDefinition> get definitions {
+    return [
+      httpRoute(HttpRouteMethod.post, '/auth/signup', _signup),
+      httpRoute(HttpRouteMethod.post, '/auth/login', _login),
+      httpRoute(HttpRouteMethod.get, '/auth/session', _session),
+    ];
   }
 
-  Future<Response> signup(Request request, Map<String, String> params) async {
-    final payload = await decodeJsonBody(request);
+  Future<void> _signup(HttpRequest request) async {
+    final payload = await decodeJsonRequest(request);
     if (payload == null) {
-      stdout.writeln('[auth] signup rejected: invalid_json');
-      return jsonResponse(400, const {'error': 'invalid_json'});
+      writeJsonResponse(request.response, 400, {'error': 'invalid_json'});
+      return;
     }
 
-    final username = payload['username']?.toString() ?? '';
     final result = await _service.signup(
-      username: username,
+      username: payload['username']?.toString() ?? '',
       password: payload['password']?.toString() ?? '',
     );
-    stdout.writeln(
-      '[auth] signup ${result.statusCode == 201 ? 'success' : 'failure'}: username="$username" status=${result.statusCode}',
-    );
-    return jsonResponse(result.statusCode, result.body);
+    writeJsonResponse(request.response, result.statusCode, result.body);
   }
 
-  Future<Response> login(Request request, Map<String, String> params) async {
-    final payload = await decodeJsonBody(request);
+  Future<void> _login(HttpRequest request) async {
+    final payload = await decodeJsonRequest(request);
     if (payload == null) {
-      stdout.writeln('[auth] login rejected: invalid_json');
-      return jsonResponse(400, const {'error': 'invalid_json'});
+      writeJsonResponse(request.response, 400, {'error': 'invalid_json'});
+      return;
     }
 
-    final username = payload['username']?.toString() ?? '';
     final result = await _service.login(
-      username: username,
+      username: payload['username']?.toString() ?? '',
       password: payload['password']?.toString() ?? '',
     );
-    stdout.writeln(
-      '[auth] login ${result.statusCode == 200 ? 'success' : 'failure'}: username="$username" status=${result.statusCode}',
-    );
-    return jsonResponse(result.statusCode, result.body);
+    writeJsonResponse(request.response, result.statusCode, result.body);
   }
 
-  Future<Response> session(Request request, Map<String, String> params) async {
+  Future<void> _session(HttpRequest request) async {
     final result = await _service.session(bearerToken(request));
-    stdout.writeln(
-      '[auth] session ${result.statusCode == 200 ? 'success' : 'failure'}: status=${result.statusCode}',
-    );
-    return jsonResponse(result.statusCode, result.body);
+    writeJsonResponse(request.response, result.statusCode, result.body);
   }
 }

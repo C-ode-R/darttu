@@ -1,22 +1,32 @@
 import 'dart:async';
 
+import 'package:darttu_client/app/auth_session_coordinator.dart';
 import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
-import 'package:darttu_client/services/auth/session_store.dart';
-import 'package:darttu_client/services/rooms/rooms_api.dart';
+import 'package:darttu_client/services/rooms/rooms_client.dart';
+import 'package:darttu_client/services/rooms/models.dart';
+import 'package:darttu_client/ui/error_messages.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-final _roomsApi = RoomsApiService();
-const _serverConnect = ServerConnectService();
-const _sessionStore = SessionStore();
 const _defaultMaxPlayers = 4;
 const _autoRefreshInterval = Duration(seconds: 5);
 
 final class RoomListScreen implements AppScreen {
+  final RoomsClient _roomsClient;
+  final ServerConnectService _serverConnect;
+  final AuthSessionCoordinator _authSessionCoordinator;
   Timer? _autoRefreshTimer;
+
+  RoomListScreen({
+    required RoomsClient roomsClient,
+    required ServerConnectService serverConnect,
+    required AuthSessionCoordinator authSessionCoordinator,
+  }) : _roomsClient = roomsClient,
+       _serverConnect = serverConnect,
+       _authSessionCoordinator = authSessionCoordinator;
 
   @override
   Widget build(AppState state) {
@@ -248,8 +258,8 @@ final class RoomListScreen implements AppScreen {
     controller.setValue<bool>('roomList.loading', true);
     final host = state.getOrDefault<String>('server.host', officialServerHost);
     final port = state.get<int>('server.port');
-    final result = await _roomsApi.fetchLobby(
-      uri: _serverConnect.lobbyUri(host: host, port: port),
+    final result = await _roomsClient.fetchLobby(
+      uri: _serverConnect.socketUri(host: host, port: port),
       sessionToken: sessionToken,
     );
     controller.setValue<bool>('roomList.loading', false);
@@ -349,8 +359,8 @@ final class RoomListScreen implements AppScreen {
     controller.setValue<bool>('roomList.loading', true);
     final host = state.getOrDefault<String>('server.host', officialServerHost);
     final port = state.get<int>('server.port');
-    final result = await _roomsApi.createRoom(
-      uri: _serverConnect.roomsUri(host: host, port: port),
+    final result = await _roomsClient.createRoom(
+      uri: _serverConnect.socketUri(host: host, port: port),
       sessionToken: state.get<String>('auth.sessionToken') ?? '',
       name: roomName,
       maxPlayers: _defaultMaxPlayers,
@@ -389,9 +399,10 @@ final class RoomListScreen implements AppScreen {
     controller.setValue<bool>('roomList.loading', true);
     final host = state.getOrDefault<String>('server.host', officialServerHost);
     final port = state.get<int>('server.port');
-    final result = await _roomsApi.joinRoom(
-      uri: _serverConnect.joinRoomUri(roomId: room.id, host: host, port: port),
+    final result = await _roomsClient.joinRoom(
+      uri: _serverConnect.socketUri(host: host, port: port),
       sessionToken: state.get<String>('auth.sessionToken') ?? '',
+      roomId: room.id,
     );
     controller.setValue<bool>('roomList.loading', false);
 
@@ -433,37 +444,17 @@ final class RoomListScreen implements AppScreen {
   }
 
   Future<void> _expireSession(AppController controller) async {
-    controller.setValue<int>('auth.userId', null);
-    controller.setValue<String>('auth.username', null);
-    controller.setValue<String>('auth.sessionToken', null);
-    await _sessionStore.clear();
-    controller.setValue<String>('auth.message', '세션이 만료되어 다시 로그인해야 합니다.');
-    controller.setScreenState(ScreenState.auth);
+    await _authSessionCoordinator.expireSession(controller);
   }
 
   String _messageForError(String error) {
-    switch (error) {
-      case 'session_required':
-      case 'invalid_session':
-        return '세션이 만료되었습니다.';
-      case 'invalid_room_name':
-        return '방 이름을 확인해주세요.';
-      case 'invalid_room_capacity':
-        return '방 인원 설정이 올바르지 않습니다.';
-      case 'room_name_already_exists':
-        return '이미 같은 이름의 방이 있습니다.';
-      case 'room_not_found':
-        return '방을 찾을 수 없습니다.';
-      case 'room_full':
-        return '방 인원이 가득 찼습니다.';
-      case 'invalid_json':
-        return '요청 형식이 올바르지 않습니다.';
-      case 'server_unreachable':
-        return '서버에 연결할 수 없습니다.';
-      case 'invalid_server_response':
-        return '서버 응답을 해석할 수 없습니다.';
-    }
-
-    return error;
+    return resolveErrorMessage(
+      error,
+      catalogs: const [
+        roomErrorMessages,
+        sessionErrorMessages,
+        commonErrorMessages,
+      ],
+    );
   }
 }

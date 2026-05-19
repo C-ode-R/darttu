@@ -3,18 +3,29 @@ import 'dart:async';
 import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
-import 'package:darttu_client/services/auth/auth_api.dart';
+import 'package:darttu_client/services/auth/auth_client.dart';
+import 'package:darttu_client/services/auth/session_repository.dart';
 import 'package:darttu_client/services/auth/session_store.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
+import 'package:darttu_client/ui/error_messages.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-final _authApi = AuthApiService();
-const _sessionStore = SessionStore();
-const _serverConnect = ServerConnectService();
 const _fieldCount = 2;
 
 final class AuthScreen implements AppScreen {
+  final AuthClient _authClient;
+  final SessionRepository _sessionRepository;
+  final ServerConnectService _serverConnect;
+
+  AuthScreen({
+    required AuthClient authClient,
+    required SessionRepository sessionRepository,
+    required ServerConnectService serverConnect,
+  }) : _authClient = authClient,
+       _sessionRepository = sessionRepository,
+       _serverConnect = serverConnect;
+
   @override
   Widget build(AppState state) {
     final isSignup = state.getOrDefault<bool>('auth.isSignup', false);
@@ -157,12 +168,12 @@ final class AuthScreen implements AppScreen {
     );
 
     final result = isSignup
-        ? await _authApi.signup(
+        ? await _authClient.signup(
             uri: _serverConnect.signupUri(host: host, port: port),
             username: username,
             password: password,
           )
-        : await _authApi.login(
+        : await _authClient.login(
             uri: _serverConnect.loginUri(host: host, port: port),
             username: username,
             password: password,
@@ -179,7 +190,7 @@ final class AuthScreen implements AppScreen {
           usernameValue != null &&
           sessionToken != null &&
           sessionToken.isNotEmpty) {
-        await _sessionStore.save(
+        await _sessionRepository.save(
           StoredSession(
             host: host,
             port: port,
@@ -204,21 +215,9 @@ final class AuthScreen implements AppScreen {
   }
 
   String _messageForError(String error) {
-    switch (error) {
-      case 'invalid_credentials':
-        return '아이디와 비밀번호를 확인해주세요.';
-      case 'username_already_exists':
-        return '이미 존재하는 아이디입니다.';
-      case 'invalid_username_or_password':
-        return '아이디 또는 비밀번호가 올바르지 않습니다.';
-      case 'invalid_json':
-        return '요청 형식이 올바르지 않습니다.';
-      case 'server_unreachable':
-        return '서버에 연결할 수 없습니다.';
-      case 'invalid_server_response':
-        return '서버 응답을 해석할 수 없습니다.';
-    }
-
-    return error;
+    return resolveErrorMessage(
+      error,
+      catalogs: const [authErrorMessages, commonErrorMessages],
+    );
   }
 }

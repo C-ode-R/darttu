@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as path;
+import 'session_repository.dart';
 
 final class StoredSession {
   final String host;
@@ -53,9 +54,10 @@ final class StoredSession {
   }
 }
 
-final class SessionStore {
+final class SessionStore implements SessionRepository {
   const SessionStore();
 
+  @override
   Future<StoredSession?> load() async {
     try {
       final file = File(_sessionFilePath());
@@ -76,12 +78,14 @@ final class SessionStore {
     }
   }
 
+  @override
   Future<void> save(StoredSession session) async {
     final file = File(_sessionFilePath());
     await file.parent.create(recursive: true);
     await file.writeAsString(jsonEncode(session.toJson()));
   }
 
+  @override
   Future<void> clear() async {
     try {
       final file = File(_sessionFilePath());

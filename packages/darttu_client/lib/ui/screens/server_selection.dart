@@ -3,16 +3,12 @@ import 'dart:async';
 import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
-import 'package:darttu_client/services/auth/auth_api.dart';
-import 'package:darttu_client/services/auth/session_store.dart';
+import 'package:darttu_client/services/auth/auth_client.dart';
+import 'package:darttu_client/services/auth/session_repository.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
-import 'package:darttu_client/services/network/socket_client.dart';
+import 'package:darttu_client/services/network/socket_connection.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
-
-final _authApi = AuthApiService();
-const _sessionStore = SessionStore();
-const _serverConnect = ServerConnectService();
 
 final _menuItems = <String>["공식 서버에 연결", "커스텀 호스트 서버에 연결"];
 
@@ -57,6 +53,21 @@ Widget loadingRow(AppState state) {
 }
 
 final class ServerSelection implements AppScreen {
+  final AuthClient _authClient;
+  final SessionRepository _sessionRepository;
+  final ServerConnectService _serverConnect;
+  final SocketConnection _socketConnection;
+
+  ServerSelection({
+    required AuthClient authClient,
+    required SessionRepository sessionRepository,
+    required ServerConnectService serverConnect,
+    required SocketConnection socketConnection,
+  }) : _authClient = authClient,
+       _sessionRepository = sessionRepository,
+       _serverConnect = serverConnect,
+       _socketConnection = socketConnection;
+
   @override
   Widget build(AppState state) {
     return Column(
@@ -112,7 +123,7 @@ final class ServerSelection implements AppScreen {
     controller.setValue<String>('serverSelection.message', '서버 상태를 확인하는 중...');
 
     const host = officialServerHost;
-    final healthy = await _authApi.healthCheck(
+    final healthy = await _authClient.healthCheck(
       _serverConnect.socketUri(host: host),
     );
     if (!healthy) {
@@ -132,8 +143,8 @@ final class ServerSelection implements AppScreen {
         'serverSelection.message',
         '기존 세션을 확인하는 중...',
       );
-      final sessionResult = await _authApi.session(
-        uri: _serverConnect.socketUri(host: host),
+      final sessionResult = await _authClient.session(
+        uri: _serverConnect.sessionUri(host: host),
         sessionToken: sessionToken,
       );
 
@@ -153,8 +164,8 @@ final class ServerSelection implements AppScreen {
       controller.setValue<String>('auth.sessionToken', null);
       controller.setValue<int>('auth.userId', null);
       controller.setValue<String>('auth.username', null);
-      await _sessionStore.clear();
-      await appSocketClient.disconnect();
+      await _sessionRepository.clear();
+      await _socketConnection.disconnect();
     }
 
     controller.setScreenState(ScreenState.auth);

@@ -7,7 +7,7 @@ Future<void> main(List<String> arguments) async {
   final databasePath = arguments.length >= 2
       ? arguments[1]
       : 'darttu_server.sqlite';
-  final server = Server(databasePath: databasePath);
+  final server = ServerBootstrap.build(databasePath: databasePath);
   final httpServer = await server.serve(port: port);
 
   stdout.writeln(

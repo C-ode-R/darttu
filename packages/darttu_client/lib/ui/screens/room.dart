@@ -1,19 +1,29 @@
 import 'dart:async';
 
+import 'package:darttu_client/app/auth_session_coordinator.dart';
 import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
-import 'package:darttu_client/services/auth/session_store.dart';
-import 'package:darttu_client/services/rooms/rooms_api.dart';
+import 'package:darttu_client/services/rooms/rooms_client.dart';
+import 'package:darttu_client/services/rooms/models.dart';
+import 'package:darttu_client/ui/error_messages.dart';
 import 'package:darttu_client/ui/screen.dart';
 import 'package:darttu_client/ui/terminal/keys.dart';
 
-final _roomsApi = RoomsApiService();
-const _serverConnect = ServerConnectService();
-const _sessionStore = SessionStore();
-
 final class RoomScreen implements AppScreen {
+  final RoomsClient _roomsClient;
+  final ServerConnectService _serverConnect;
+  final AuthSessionCoordinator _authSessionCoordinator;
+
+  RoomScreen({
+    required RoomsClient roomsClient,
+    required ServerConnectService serverConnect,
+    required AuthSessionCoordinator authSessionCoordinator,
+  }) : _roomsClient = roomsClient,
+       _serverConnect = serverConnect,
+       _authSessionCoordinator = authSessionCoordinator;
+
   @override
   Widget build(AppState state) {
     final roomName = state.get<String>('room.currentRoomName') ?? '방';
@@ -127,9 +137,10 @@ final class RoomScreen implements AppScreen {
     controller.setValue<bool>('room.loading', true);
     final host = state.getOrDefault<String>('server.host', officialServerHost);
     final port = state.get<int>('server.port');
-    final result = await _roomsApi.fetchRoom(
-      uri: _serverConnect.roomUri(roomId: roomId, host: host, port: port),
+    final result = await _roomsClient.fetchRoom(
+      uri: _serverConnect.socketUri(host: host, port: port),
       sessionToken: sessionToken,
+      roomId: roomId,
     );
     controller.setValue<bool>('room.loading', false);
 
@@ -164,13 +175,13 @@ final class RoomScreen implements AppScreen {
       return;
     }
 
-    final result = await _roomsApi.leaveRoom(
-      uri: _serverConnect.leaveRoomUri(
-        roomId: roomId,
+    final result = await _roomsClient.leaveRoom(
+      uri: _serverConnect.socketUri(
         host: state.getOrDefault<String>('server.host', officialServerHost),
         port: state.get<int>('server.port'),
       ),
       sessionToken: sessionToken,
+      roomId: roomId,
     );
 
     if (result.statusCode == 200) {
@@ -204,26 +215,17 @@ final class RoomScreen implements AppScreen {
   }
 
   Future<void> _expireSession(AppController controller) async {
-    controller.setValue<int>('auth.userId', null);
-    controller.setValue<String>('auth.username', null);
-    controller.setValue<String>('auth.sessionToken', null);
-    await _sessionStore.clear();
-    controller.setValue<String>('auth.message', '세션이 만료되어 다시 로그인해야 합니다.');
-    controller.setScreenState(ScreenState.auth);
+    await _authSessionCoordinator.expireSession(controller);
   }
 
   String _messageForError(String error) {
-    switch (error) {
-      case 'room_not_found':
-        return '방을 찾을 수 없습니다.';
-      case 'invalid_session':
-        return '세션이 만료되었습니다.';
-      case 'server_unreachable':
-        return '서버에 연결할 수 없습니다.';
-      case 'invalid_server_response':
-        return '서버 응답을 해석할 수 없습니다.';
-    }
-
-    return error;
+    return resolveErrorMessage(
+      error,
+      catalogs: const [
+        roomErrorMessages,
+        sessionErrorMessages,
+        commonErrorMessages,
+      ],
+    );
   }
 }
