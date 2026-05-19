@@ -61,7 +61,7 @@ final class AppSocketClient implements SocketConnection {
     _subscription = null;
 
     if (socket != null) {
-      await socket.close();
+      unawaited(socket.close(WebSocketStatus.goingAway));
     }
 
     _failPending(

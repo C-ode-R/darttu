@@ -14,7 +14,12 @@ Future<void> main(List<String> arguments) async {
     'darttu_server listening on http://localhost:${httpServer.port}',
   );
 
+  var shuttingDown = false;
   ProcessSignal.sigint.watch().listen((_) async {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
     await httpServer.close(force: true);
     await server.close();
     exit(0);

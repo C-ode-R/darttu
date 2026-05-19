@@ -26,6 +26,7 @@ final class TuiApp {
   StreamSubscription<ProcessSignal>? _sigintSubscription;
   StreamSubscription<ProcessSignal>? _sigtermSubscription;
   bool _quitRequested = false;
+  Completer<void>? _quitCompleter;
 
   TuiApp({
     required this.state,
@@ -43,6 +44,7 @@ final class TuiApp {
     }
 
     _running = true;
+    _quitCompleter = Completer<void>();
 
     try {
       renderer.init();
@@ -60,10 +62,7 @@ final class TuiApp {
       // 최초 화면 렌더링
       scheduleRender();
 
-      // 앱 생존 루프
-      while (_running) {
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-      }
+      await _quitCompleter!.future;
     } finally {
       await dispose();
     }
@@ -110,7 +109,12 @@ final class TuiApp {
   }
 
   void quit() {
+    if (!_running) {
+      return;
+    }
+
     _running = false;
+    _quitCompleter?.complete();
   }
 
   Future<void> _requestQuit() async {

@@ -41,8 +41,9 @@ final class Server {
 
   Future<void> close() async {
     for (final session in _sessions.toList(growable: false)) {
-      await session.socket.close();
+      unawaited(session.socket.close(WebSocketStatus.goingAway));
     }
+    _sessions.clear();
     await _httpServer?.close(force: true);
     await _onClose();
   }
