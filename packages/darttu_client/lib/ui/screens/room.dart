@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:darttu_client/app/auth_session_coordinator.dart';
 import 'package:darttu_client/app/app_controller.dart';
@@ -134,6 +135,7 @@ final class RoomScreen implements AppScreen {
 
   @override
   void handleInput(String input, AppState state, AppController controller) {
+    stderr.writeln('[room] input received: "${input}" (code: ${input.codeUnitAt(0)})');
     if (input == 'r' || input == 'R') {
       unawaited(_loadRoom(state, controller));
       return;
@@ -153,7 +155,10 @@ final class RoomScreen implements AppScreen {
         myUserId != null &&
         members.first.userId == myUserId;
 
+    stderr.writeln('[room] isHost=$isHost, myUserId=$myUserId, members=${members.length}');
+
     if (input == ' ' && !isHost) {
+      stderr.writeln('[room] toggleReady triggered');
       unawaited(_toggleReady(state, controller));
       return;
     }
