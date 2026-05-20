@@ -46,6 +46,7 @@ final class ScreenRegistry {
         roomsClient: dependencies.roomsClient,
         serverConnect: dependencies.serverConnect,
         authSessionCoordinator: authSessionCoordinator,
+        socket: dependencies.socket,
       ),
     });
   }

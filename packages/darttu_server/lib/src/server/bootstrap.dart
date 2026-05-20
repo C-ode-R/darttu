@@ -32,6 +32,7 @@ final class ServerBootstrap {
       members: memberRepo,
       presence: presenceRepo,
       onRoomChanged: () => server.broadcastLobby(),
+      onRoomDetailChanged: (roomId) => server.broadcastRoomDetail(roomId),
     );
     final roomsService = RoomsService(
       rooms: roomRepo,

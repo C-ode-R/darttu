@@ -5,6 +5,7 @@ import 'package:darttu_client/app/app_controller.dart';
 import 'package:darttu_client/app/app_state.dart';
 import 'package:darttu_client/layout/layout.dart';
 import 'package:darttu_client/services/auth/server_connect.dart';
+import 'package:darttu_client/services/network/socket_client.dart';
 import 'package:darttu_client/services/rooms/rooms_client.dart';
 import 'package:darttu_client/services/rooms/models.dart';
 import 'package:darttu_client/ui/error_messages.dart';
@@ -15,14 +16,17 @@ final class RoomScreen implements AppScreen {
   final RoomsClient _roomsClient;
   final ServerConnectService _serverConnect;
   final AuthSessionCoordinator _authSessionCoordinator;
+  final AppSocketClient _socket;
 
   RoomScreen({
     required RoomsClient roomsClient,
     required ServerConnectService serverConnect,
     required AuthSessionCoordinator authSessionCoordinator,
+    required AppSocketClient socket,
   }) : _roomsClient = roomsClient,
        _serverConnect = serverConnect,
-       _authSessionCoordinator = authSessionCoordinator;
+       _authSessionCoordinator = authSessionCoordinator,
+       _socket = socket;
 
   @override
   Widget build(AppState state) {
@@ -166,11 +170,31 @@ final class RoomScreen implements AppScreen {
 
   @override
   void onEnter(AppState state, AppController controller) {
+    _handleBroadcast(state, controller);
     unawaited(_loadRoom(state, controller));
   }
 
   @override
-  void onExit(AppState state, AppController controller) {}
+  void onExit(AppState state, AppController controller) {
+    _socket.onBroadcast = null;
+  }
+
+  void _handleBroadcast(AppState state, AppController controller) {
+    _socket.onBroadcast = (message) {
+      final action = message['action']?.toString();
+      if (action != 'roomUpdate') return;
+      if (state.screenState != ScreenState.room) return;
+
+      final body = message['body'];
+      if (body is! Map<String, Object?>) return;
+
+      final roomJson = body['room'];
+      if (roomJson is! Map<Object?, Object?>) return;
+
+      final room = _parseRoomDetail(roomJson);
+      _applyRoomDetail(room, controller);
+    };
+  }
 
   Future<void> _loadRoom(AppState state, AppController controller) async {
     final roomId = state.get<int>('room.currentRoomId');
@@ -300,6 +324,33 @@ final class RoomScreen implements AppScreen {
     controller.setValue<String>(
       'room.message',
       _messageForError(result.error ?? 'unknown_error'),
+    );
+  }
+
+  RoomMemberSummary _parseMember(Map<Object?, Object?> json) {
+    return RoomMemberSummary(
+      userId: (json['userId'] as num?)?.toInt() ?? 0,
+      username: json['username']?.toString() ?? '알 수 없는 사용자',
+      isHost: json['isHost'] == true,
+      isReady: json['isReady'] == true,
+    );
+  }
+
+  RoomDetail _parseRoomDetail(Map<Object?, Object?> json) {
+    final membersJson = json['members'];
+    final members = membersJson is List<Object?>
+        ? membersJson
+              .whereType<Map<Object?, Object?>>()
+              .map(_parseMember)
+              .toList(growable: false)
+        : const <RoomMemberSummary>[];
+
+    return RoomDetail(
+      id: (json['id'] as num?)?.toInt() ?? 0,
+      name: json['name']?.toString() ?? '이름 없는 방',
+      currentPlayers: (json['currentPlayers'] as num?)?.toInt() ?? 0,
+      maxPlayers: (json['maxPlayers'] as num?)?.toInt() ?? 0,
+      members: members,
     );
   }
 

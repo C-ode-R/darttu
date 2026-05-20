@@ -184,4 +184,27 @@ final class Server {
       stderr.writeln('[broadcast] error: $e\n$st');
     }
   }
+
+  Future<void> broadcastRoomDetail(int roomId) async {
+    try {
+      final result = await _roomsService.detail(roomId: roomId);
+      if (result.statusCode != 200) return;
+
+      final payload = jsonEncode({
+        'type': 'broadcast',
+        'action': 'roomUpdate',
+        'body': result.body,
+      });
+
+      for (final session in _sessions.toList(growable: false)) {
+        try {
+          session.socket.add(payload);
+        } on Object {
+          // Skip disconnected sessions.
+        }
+      }
+    } on Object catch (e, st) {
+      stderr.writeln('[broadcast] room error: $e\n$st');
+    }
+  }
 }
