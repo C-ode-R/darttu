@@ -33,4 +33,3 @@ ENV DARTTU_DB_PATH=/data/darttu_server.sqlite
 EXPOSE 8080
 
 CMD ["/bin/sh", "-c", "/app/darttu_server ${PORT} ${DARTTU_DB_PATH}"]
-# d
