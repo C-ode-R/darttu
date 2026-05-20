@@ -95,7 +95,7 @@ final class RoomListScreen implements AppScreen {
                     Text(
                       isCreating
                           ? '방 이름 입력 후 Enter로 생성, Esc로 취소'
-                          : '상하 방향키로 선택, Enter로 입장, C로 방 만들기, R로 새로고침',
+                          : '상하 방향키로 선택, Enter로 입장, C로 방 만들기, R로 새로고침, Esc로 로비',
                       foregroundColor: TerminalColor.brightBlack,
                     ),
                     SizedBox(height: 1),
@@ -169,6 +169,11 @@ final class RoomListScreen implements AppScreen {
 
     if (isCreating) {
       _handleCreateInput(input, state, controller);
+      return;
+    }
+
+    if (input == Keys.escape) {
+      controller.setScreenState(ScreenState.lobby);
       return;
     }
 
