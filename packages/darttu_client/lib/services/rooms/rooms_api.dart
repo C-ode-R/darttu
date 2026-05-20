@@ -177,6 +177,7 @@ final class RoomsApi implements RoomsClient {
                   userId: (m['userId'] as num?)?.toInt() ?? 0,
                   username: m['username']?.toString() ?? '알 수 없는 사용자',
                   isHost: m['isHost'] == true,
+                  isReady: m['isReady'] == true,
                 ),
               )
               .toList(growable: false)
@@ -189,5 +190,54 @@ final class RoomsApi implements RoomsClient {
       maxPlayers: (json['maxPlayers'] as num?)?.toInt() ?? 0,
       members: members,
     );
+  }
+
+  @override
+  Future<RoomsApiResult> toggleReady({
+    required Uri uri,
+    required String sessionToken,
+    required int roomId,
+  }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
+    final response = await _socket.call(
+      action: 'toggleReady',
+      payload: {'roomId': roomId},
+    );
+    final roomJson = response.body['room'];
+    if (roomJson is! Map<Object?, Object?>) {
+      return _errorResult(response);
+    }
+
+    return RoomsApiResult(
+      statusCode: response.statusCode,
+      error: response.body['error']?.toString(),
+      room: null,
+      roomDetail: _parseRoomDetail(roomJson),
+      lobby: null,
+    );
+  }
+
+  @override
+  Future<RoomsApiResult> startGame({
+    required Uri uri,
+    required String sessionToken,
+    required int roomId,
+  }) async {
+    await _socket.connect(uri: uri, sessionToken: sessionToken);
+    final response = await _socket.call(
+      action: 'startGame',
+      payload: {'roomId': roomId},
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return RoomsApiResult(
+        statusCode: response.statusCode,
+        error: null,
+        room: null,
+        roomDetail: null,
+        lobby: null,
+      );
+    }
+
+    return _errorResult(response);
   }
 }

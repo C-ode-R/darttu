@@ -36,6 +36,11 @@ final class RoomScreen implements AppScreen {
     final frame = state.getOrDefault<int>('ui.frame', 0);
     final currentPlayers = state.getOrDefault<int>('room.currentPlayers', 0);
     final maxPlayers = state.getOrDefault<int>('room.maxPlayers', 0);
+    final myUserId = state.get<int>('auth.userId');
+    final isHost = members.isNotEmpty &&
+        myUserId != null &&
+        members.first.userId == myUserId;
+    final allReady = members.isNotEmpty && members.every((m) => m.isReady);
 
     return Column(
       children: [
@@ -55,7 +60,7 @@ final class RoomScreen implements AppScreen {
             child: Column(
               children: [
                 Text(
-                  'R로 새로고침, B 또는 Esc로 방 나가기, L로 로비로 돌아가기',
+                  _buildHelpText(isHost, allReady),
                   foregroundColor: TerminalColor.brightBlack,
                 ),
                 SizedBox(height: 1),
@@ -79,9 +84,7 @@ final class RoomScreen implements AppScreen {
                   Menu(
                     items: members
                         .map(
-                          (member) => member.isHost
-                              ? '${member.username} (방장)'
-                              : member.username,
+                          (member) => _memberLabel(member, myUserId),
                         )
                         .toList(),
                     selectedIndex: -1,
@@ -106,6 +109,25 @@ final class RoomScreen implements AppScreen {
     );
   }
 
+  String _buildHelpText(bool isHost, bool allReady) {
+    final parts = <String>[
+      'R로 새로고침',
+      if (!isHost) 'Space로 준비/해제',
+      if (isHost && allReady) 'Enter로 게임 시작',
+      'B/Esc로 방 나가기',
+      'L로 로비',
+    ];
+    return parts.join(', ');
+  }
+
+  String _memberLabel(RoomMemberSummary member, int? myUserId) {
+    final isMe = member.userId == myUserId;
+    final readyTag = member.isReady ? '[준비]' : '[대기]';
+    final hostTag = member.isHost ? '(방장)' : '';
+    final meTag = isMe ? '(나)' : '';
+    return '${member.username} $readyTag $hostTag$meTag';
+  }
+
   @override
   void handleInput(String input, AppState state, AppController controller) {
     if (input == 'r' || input == 'R') {
@@ -115,6 +137,25 @@ final class RoomScreen implements AppScreen {
 
     if (input == 'l' || input == 'L') {
       controller.setScreenState(ScreenState.roomList);
+      return;
+    }
+
+    final members = state.getOrDefault<List<RoomMemberSummary>>(
+      'room.members',
+      const <RoomMemberSummary>[],
+    );
+    final myUserId = state.get<int>('auth.userId');
+    final isHost = members.isNotEmpty &&
+        myUserId != null &&
+        members.first.userId == myUserId;
+
+    if (input == ' ' && !isHost) {
+      unawaited(_toggleReady(state, controller));
+      return;
+    }
+
+    if (Keys.isEnter(input) && isHost) {
+      unawaited(_startGame(state, controller));
       return;
     }
 
@@ -170,6 +211,57 @@ final class RoomScreen implements AppScreen {
       'room.message',
       _messageForError(result.error ?? 'unknown_error'),
     );
+  }
+
+  Future<void> _toggleReady(AppState state, AppController controller) async {
+    final roomId = state.get<int>('room.currentRoomId');
+    final sessionToken = state.get<String>('auth.sessionToken') ?? '';
+    if (roomId == null || sessionToken.isEmpty) return;
+
+    final host = state.getOrDefault<String>('server.host', officialServerHost);
+    final port = state.get<int>('server.port');
+    final result = await _roomsClient.toggleReady(
+      uri: _serverConnect.socketUri(host: host, port: port),
+      sessionToken: sessionToken,
+      roomId: roomId,
+    );
+
+    if (result.statusCode == 200 && result.roomDetail != null) {
+      _applyRoomDetail(result.roomDetail!, controller);
+      return;
+    }
+
+    if (result.statusCode == 401) {
+      await _expireSession(controller);
+    }
+  }
+
+  Future<void> _startGame(AppState state, AppController controller) async {
+    final roomId = state.get<int>('room.currentRoomId');
+    final sessionToken = state.get<String>('auth.sessionToken') ?? '';
+    if (roomId == null || sessionToken.isEmpty) return;
+
+    final host = state.getOrDefault<String>('server.host', officialServerHost);
+    final port = state.get<int>('server.port');
+    final result = await _roomsClient.startGame(
+      uri: _serverConnect.socketUri(host: host, port: port),
+      sessionToken: sessionToken,
+      roomId: roomId,
+    );
+
+    if (result.statusCode == 200) {
+      controller.setValue<String>('room.message', '게임이 시작되었습니다!');
+      return;
+    }
+
+    if (result.statusCode == 400) {
+      controller.setValue<String>('room.message', '모든 플레이어가 준비해야 합니다.');
+      return;
+    }
+
+    if (result.statusCode == 401) {
+      await _expireSession(controller);
+    }
   }
 
   Future<void> _leaveRoom(AppState state, AppController controller) async {

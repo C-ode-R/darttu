@@ -30,4 +30,16 @@ abstract interface class RoomsClient {
     required String sessionToken,
     required int roomId,
   });
+
+  Future<RoomsApiResult> toggleReady({
+    required Uri uri,
+    required String sessionToken,
+    required int roomId,
+  });
+
+  Future<RoomsApiResult> startGame({
+    required Uri uri,
+    required String sessionToken,
+    required int roomId,
+  });
 }

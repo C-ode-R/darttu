@@ -35,4 +35,7 @@ const roomErrorMessages = <String, String>{
   'room_name_already_exists': '이미 같은 이름의 방이 있습니다.',
   'room_not_found': '방을 찾을 수 없습니다.',
   'room_full': '방 인원이 가득 찼습니다.',
+  'not_in_room': '방에 참여하지 않았습니다.',
+  'not_host': '방장만 할 수 있습니다.',
+  'not_all_ready': '모든 플레이어가 준비해야 합니다.',
 };

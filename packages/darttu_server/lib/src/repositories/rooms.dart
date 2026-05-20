@@ -34,11 +34,13 @@ final class RoomMemberSummary {
   final int userId;
   final String username;
   final bool isHost;
+  final bool isReady;
 
   const RoomMemberSummary({
     required this.userId,
     required this.username,
     required this.isHost,
+    required this.isReady,
   });
 }
 
@@ -87,6 +89,7 @@ abstract interface class RoomMemberRepo {
   Future<void> removeUserFromAllRooms(int userId);
   Future<void> removeUserFromRoom({required int roomId, required int userId});
   Future<void> addUserToRoom({required int roomId, required int userId});
+  Future<void> toggleReady({required int roomId, required int userId});
 }
 
 abstract interface class PresenceRepo {
@@ -146,7 +149,7 @@ final class DriftRoomRepo implements RoomRepo {
 
     final memberRows = await _db
         .customSelect(
-          'SELECT users.id AS user_id, users.username AS username FROM room_members INNER JOIN users ON users.id = room_members.user_id WHERE room_members.room_id = ?1 ORDER BY room_members.joined_at ASC, users.username COLLATE NOCASE ASC',
+          'SELECT users.id AS user_id, users.username AS username, room_members.is_ready AS is_ready FROM room_members INNER JOIN users ON users.id = room_members.user_id WHERE room_members.room_id = ?1 ORDER BY room_members.joined_at ASC, users.username COLLATE NOCASE ASC',
           variables: [Variable<int>(id)],
           readsFrom: const {},
         )
@@ -165,6 +168,7 @@ final class DriftRoomRepo implements RoomRepo {
               userId: e.value.read<int>('user_id'),
               username: e.value.read<String>('username'),
               isHost: e.key == 0,
+              isReady: e.value.read<int>('is_ready') == 1,
             ),
           )
           .toList(growable: false),
@@ -285,6 +289,14 @@ final class DriftRoomMemberRepo implements RoomMemberRepo {
   Future<void> addUserToRoom({required int roomId, required int userId}) {
     return _db.customStatement(
       'INSERT INTO room_members (room_id, user_id) VALUES (?1, ?2)',
+      [roomId, userId],
+    );
+  }
+
+  @override
+  Future<void> toggleReady({required int roomId, required int userId}) {
+    return _db.customStatement(
+      'UPDATE room_members SET is_ready = 1 - is_ready WHERE room_id = ?1 AND user_id = ?2',
       [roomId, userId],
     );
   }

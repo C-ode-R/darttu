@@ -14,6 +14,8 @@ final class RoomsSocketRoutes {
       socketAction('joinRoom', _join),
       socketAction('fetchRoom', _detail),
       socketAction('leaveRoom', _leave),
+      socketAction('toggleReady', _toggleReady),
+      socketAction('startGame', _startGame),
     ];
   }
 
@@ -66,6 +68,28 @@ final class RoomsSocketRoutes {
     final result = await _rooms.leave(
       roomId: (context.payload['roomId'] as num?)?.toInt() ?? -1,
       userId: context.session.userId!,
+    );
+    return SocketRouteResponse(
+      statusCode: result.statusCode,
+      body: result.body,
+    );
+  }
+
+  Future<SocketRouteResponse?> _toggleReady(SocketRouteContext context) async {
+    final result = await _rooms.toggleReady(
+      roomId: (context.payload['roomId'] as num?)?.toInt() ?? -1,
+      userId: context.session.userId!,
+    );
+    return SocketRouteResponse(
+      statusCode: result.statusCode,
+      body: result.body,
+    );
+  }
+
+  Future<SocketRouteResponse?> _startGame(SocketRouteContext context) async {
+    final result = await _rooms.startGame(
+      roomId: (context.payload['roomId'] as num?)?.toInt() ?? -1,
+      hostUserId: context.session.userId!,
     );
     return SocketRouteResponse(
       statusCode: result.statusCode,

@@ -105,6 +105,14 @@ final class RoomMembershipService {
     return _rooms.detail(roomId);
   }
 
+  Future<void> toggleReady({
+    required int roomId,
+    required int userId,
+  }) async {
+    await _members.toggleReady(roomId: roomId, userId: userId);
+    await _onRoomChanged();
+  }
+
   Future<void> _normalizeRooms(Set<int> roomIds) async {
     for (final roomId in roomIds) {
       await _normalizeRoom(roomId);

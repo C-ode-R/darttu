@@ -131,6 +131,64 @@ final class RoomsService {
     await _membership.leaveRoom(roomId: roomId, userId: userId);
     return const RoomsResult(statusCode: 200, body: {'ok': true});
   }
+
+  Future<RoomsResult> toggleReady({
+    required int roomId,
+    required int userId,
+  }) async {
+    final room = await _rooms.detail(roomId);
+    if (room == null) {
+      return const RoomsResult(
+        statusCode: 404,
+        body: {'error': 'room_not_found'},
+      );
+    }
+
+    final isMember = room.members.any((m) => m.userId == userId);
+    if (!isMember) {
+      return const RoomsResult(
+        statusCode: 403,
+        body: {'error': 'not_in_room'},
+      );
+    }
+
+    await _membership.toggleReady(roomId: roomId, userId: userId);
+    final updatedRoom = await _rooms.detail(roomId);
+    return RoomsResult(
+      statusCode: 200,
+      body: {'room': RoomsPresenter.toDetailJson(updatedRoom!)},
+    );
+  }
+
+  Future<RoomsResult> startGame({
+    required int roomId,
+    required int hostUserId,
+  }) async {
+    final room = await _rooms.detail(roomId);
+    if (room == null) {
+      return const RoomsResult(
+        statusCode: 404,
+        body: {'error': 'room_not_found'},
+      );
+    }
+
+    if (!room.members.first.isHost) {
+      return const RoomsResult(
+        statusCode: 403,
+        body: {'error': 'not_host'},
+      );
+    }
+
+    final allReady = room.members.every((m) => m.isReady);
+    if (!allReady) {
+      return const RoomsResult(
+        statusCode: 400,
+        body: {'error': 'not_all_ready'},
+      );
+    }
+
+    return RoomsResult(statusCode: 200, body: {'ok': true});
+  }
 }
 
 final class RoomsPresenter {

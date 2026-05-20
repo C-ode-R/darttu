@@ -30,11 +30,13 @@ final class RoomMemberSummary {
   final int userId;
   final String username;
   final bool isHost;
+  final bool isReady;
 
   const RoomMemberSummary({
     required this.userId,
     required this.username,
     required this.isHost,
+    required this.isReady,
   });
 }
 

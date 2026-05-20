@@ -25,7 +25,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(String path) : super(_openConnection(path));
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -50,6 +50,11 @@ class AppDatabase extends _$AppDatabase {
       if (from < 5) {
         await customStatement(_createOnlineUsersTableSql);
         await customStatement(_createRoomMembersTableSql);
+      }
+      if (from < 6) {
+        await customStatement(
+          'ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0',
+        );
       }
     },
   );
@@ -101,6 +106,7 @@ CREATE TABLE IF NOT EXISTS room_members (
   room_id INTEGER NOT NULL,
   user_id INTEGER NOT NULL UNIQUE,
   joined_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  is_ready INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (room_id, user_id)
 )
 ''';
